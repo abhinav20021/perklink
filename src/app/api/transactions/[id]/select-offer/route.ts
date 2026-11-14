@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { handleApiError } from '@/lib/api-response';
+import { ApiError, handleApiError } from '@/lib/api-response';
 import { generateRecommendationExplanation } from '@/lib/ai/recommendation-intelligence';
 import { getRequiredSession } from '@/lib/auth/session';
 import { mutateDatabase, projectTransactionForRole } from '@/lib/db/store';
@@ -37,11 +37,12 @@ export async function POST(
         db.config,
         { isEmiPurchase: body.isEmiPurchase }
       );
-      const selectedEval = comparisons.find((c) => c.offerId === offer.id)!;
+      const selectedEval = comparisons.find((c) => c.offerId === offer.id);
 
-      if (selectedEval.eligibilityStatus === 'NOT_ELIGIBLE') {
-        throw new Error(
-          `Cannot select ineligible offer: ${selectedEval.eligibilityReason}`
+      if (!selectedEval || selectedEval.eligibilityStatus !== 'ELIGIBLE') {
+        throw new ApiError(
+          `Cannot select ineligible or unverified offer: ${selectedEval?.eligibilityReason || 'Condition validation failed'}`,
+          400
         );
       }
 
@@ -78,6 +79,17 @@ export async function POST(
         providerMatches[0]?.offeredReward ?? db.config.defaultProviderRewardInr;
 
       tx.offerId = offer.id;
+      tx.selectedOfferSnapshot = {
+        offerId: offer.id,
+        bankName: offer.bankName,
+        cardType: offer.cardType,
+        offerTitle: offer.offerTitle,
+        discountPercentage: selectedEval.discountPercentage,
+        maxDiscount: selectedEval.maxDiscount,
+        actualDiscount: selectedEval.actualDiscount,
+        cardChargeAmount: selectedEval.cardChargeAmount,
+        shopperNetSavings: selectedEval.shopperNetSavings,
+      };
       tx.bankDiscount = selectedEval.actualDiscount;
       tx.cardChargeAmount = selectedEval.cardChargeAmount;
       tx.providerReward = topReward;

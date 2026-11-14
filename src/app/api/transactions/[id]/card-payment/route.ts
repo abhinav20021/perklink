@@ -20,7 +20,7 @@ export async function POST(
       const tx = db.transactions.find((t) => t.id === id);
       if (!tx) throw new Error(`Transaction ${id} not found`);
       if (tx.providerId !== session.providerId) {
-        throw new Error('Only the matched Class A provider can initiate card checkout.');
+        throw new Error('Only the matched Perk Provider can initiate card checkout.');
       }
 
       const mandate = db.upiMandates.find((m) => m.transactionId === tx.id);

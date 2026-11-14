@@ -94,6 +94,15 @@ export default function AdminDashboardPage() {
   const settledRevenue = transactions
     .filter((t) => t.settlementRecord?.status === 'SETTLED')
     .reduce((sum, t) => sum + (t.settlementRecord?.platformFee ?? 0), 0);
+  const authorizedMandates = transactions.filter(
+    (t) => t.transaction.providerMandateStatus === 'AUTHORISED'
+  ).length;
+  const activeReturns = transactions.filter(
+    (t) => t.transaction.merchantRefundStatus && t.transaction.merchantRefundStatus !== 'NONE'
+  ).length;
+  const failedRecoveries = transactions.filter(
+    (t) => t.transaction.recoveryStatus === 'RECOVERY_FAILED'
+  ).length;
 
   return (
     <AppShell requiredRole="ADMIN_OPS">
@@ -163,6 +172,43 @@ export default function AdminDashboardPage() {
               <p className="text-2xl font-extrabold text-[#002970] tabular-nums mt-1">
                 {formatInr(settledRevenue)}
               </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Mandate & Refund Protection Health */}
+        <div className="grid sm:grid-cols-3 gap-4">
+          <Card className="border-sky-200 bg-sky-50/50">
+            <CardContent className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-600">Authorised Provider Mandates</p>
+                <p className="text-xl font-extrabold text-[#002970] mt-0.5 tabular-nums">
+                  {authorizedMandates} Active
+                </p>
+              </div>
+              <ShieldCheck className="h-7 w-7 text-[#00BAF2]" />
+            </CardContent>
+          </Card>
+          <Card className="border-amber-200 bg-amber-50/50">
+            <CardContent className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-600">Returns &amp; Merchant Refunds</p>
+                <p className="text-xl font-extrabold text-amber-700 mt-0.5 tabular-nums">
+                  {activeReturns} In Tracking
+                </p>
+              </div>
+              <Activity className="h-7 w-7 text-amber-600" />
+            </CardContent>
+          </Card>
+          <Card className={failedRecoveries > 0 ? 'border-rose-300 bg-rose-50/50' : 'border-emerald-200 bg-emerald-50/50'}>
+            <CardContent className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-600">Mandate Recovery Exceptions</p>
+                <p className={`text-xl font-extrabold mt-0.5 tabular-nums ${failedRecoveries > 0 ? 'text-rose-700' : 'text-[#00B86B]'}`}>
+                  {failedRecoveries} {failedRecoveries > 0 ? 'Manual Review' : 'Zero Failures'}
+                </p>
+              </div>
+              <AlertTriangle className={`h-7 w-7 ${failedRecoveries > 0 ? 'text-rose-600' : 'text-[#00B86B]'}`} />
             </CardContent>
           </Card>
         </div>

@@ -169,8 +169,44 @@ export default function AdminTransactionsPage() {
     }
   }
 
+  async function simulateMerchantRefund(amount?: number, simulateFailure = false) {
+    if (!active) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const refundAmount = amount ?? active.transaction.cardChargeAmount;
+      const res = await fetch('/api/integrations/merchant-refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: active.transaction.id,
+          merchantRefundId: `mref-sim-${Date.now()}`,
+          refundAmount,
+          originalCardTxId:
+            active.transaction.paymentSimulation?.paymentGatewayTxId || 'sim-card-tx',
+          reason: 'Merchant issued return refund directly to provider card.',
+          simulateFailure,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Merchant refund simulation failed');
+      await loadAll(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Merchant refund simulation failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const nextDelivery = active ? getNextDeliveryStep(active) : null;
-  const canSettle = active?.transaction.status === 'SETTLEMENT_ELIGIBLE';
+  const isMandateAuthorised = active?.transaction.providerMandateStatus === 'AUTHORISED';
+  const hasPendingRefund =
+    active?.transaction.merchantRefundStatus &&
+    active?.transaction.merchantRefundStatus !== 'NONE';
+  const canSettle =
+    active?.transaction.status === 'SETTLEMENT_ELIGIBLE' &&
+    isMandateAuthorised &&
+    !hasPendingRefund;
   const canRefund = active
     ? ['PAYMENT_FAILED', 'VERIFICATION_FAILED', 'DISPUTED'].includes(
         active.transaction.status
@@ -289,9 +325,58 @@ export default function AdminTransactionsPage() {
                     ? 'Settlement Completed'
                     : canSettle
                     ? 'Simulate Settlement'
+                    : !isMandateAuthorised
+                    ? 'Settlement Locked (Mandate Pending/Missing)'
+                    : hasPendingRefund
+                    ? 'Settlement Blocked (Return In Progress)'
                     : 'Settlement Locked (Complete Delivery & Return Window)'}
                 </Button>
               </CardContent>
+
+              {/* Merchant Refund & Mandate Recovery Simulation Panel */}
+              <div className="border-t border-slate-200 bg-slate-50/80 px-6 py-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div>
+                  <p className="font-bold text-[#002970] flex items-center gap-1.5">
+                    <RotateCcw className="h-4 w-4 text-amber-600" />
+                    Simulate Merchant Card Refund &amp; Mandate Recovery (Scenarios C, D, E)
+                  </p>
+                  <p className="text-slate-500 text-[11px]">
+                    Tests recovery against Perk Provider&apos;s refund protection mandate and subsequent Shopper reimbursement.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || !['ORDER_CREATED', 'INVOICE_VERIFIED', 'SHIPPED', 'DELIVERED', 'RETURN_WINDOW_ACTIVE', 'SETTLEMENT_ELIGIBLE', 'SETTLEMENT_COMPLETED'].includes(active.transaction.status)}
+                    onClick={() => simulateMerchantRefund()}
+                    className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                  >
+                    Simulate Full Refund ({formatInr(active.transaction.cardChargeAmount)})
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || !['ORDER_CREATED', 'INVOICE_VERIFIED', 'SHIPPED', 'DELIVERED', 'RETURN_WINDOW_ACTIVE', 'SETTLEMENT_ELIGIBLE', 'SETTLEMENT_COMPLETED'].includes(active.transaction.status)}
+                    onClick={() => simulateMerchantRefund(5000)}
+                    className="border-amber-300 text-amber-800 hover:bg-amber-50"
+                  >
+                    Simulate Partial Refund (₹5,000)
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => simulateMerchantRefund(active.transaction.cardChargeAmount, true)}
+                    className="border-rose-300 text-rose-800 hover:bg-rose-50"
+                  >
+                    Simulate Recovery Failure (Scenario E)
+                  </Button>
+                </div>
+              </div>
             </Card>
 
             <TransactionDetailCard item={active} />

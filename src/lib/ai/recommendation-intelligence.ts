@@ -80,7 +80,9 @@ Other Matched Providers: ${providerMatches.slice(1).map((p) => `${p.providerAlia
   const offerSummary = `${selectedOffer.bankName} delivers ₹${selectedOffer.actualDiscount.toLocaleString('en-IN')} instant discount, resulting in a final shopper payable amount of ₹${selectedOffer.shopperFinalAmount.toLocaleString('en-IN')} and net savings of ₹${selectedOffer.shopperNetSavings.toLocaleString('en-IN')} after the ₹${selectedOffer.providerReward} provider reward and ₹${selectedOffer.perkLinkFee} PerkLink fee.`;
 
   const providerRecommendationReason = topProvider
-    ? `We recommend ${topProvider.providerAlias} (${topProvider.cardProduct}) because the registered card metadata matches the ${selectedOffer.bankName} offer conditions, the provider is currently ${topProvider.availabilityStatus.toLowerCase()}, and their history of ${topProvider.completedOrders} completed orders (${topProvider.rating.toFixed(1)}★ rating, ~${topProvider.avgAcceptanceMinutes}m response) scored ${topProvider.matchScore}/100.`
+    ? topProvider.isNewProvider
+      ? `We recommend ${topProvider.providerAlias} (${topProvider.cardProduct}) because their registered ${selectedOffer.bankName} card is fully verified, the provider is currently ${topProvider.availabilityStatus.toLowerCase()}, and they have ample transaction capacity (₹${topProvider.maxTransactionAmount.toLocaleString('en-IN')}) to fulfill your order as a newly enrolled cardholder.`
+      : `We recommend ${topProvider.providerAlias} (${topProvider.cardProduct}) because the registered card metadata matches the ${selectedOffer.bankName} offer conditions, the provider is currently ${topProvider.availabilityStatus.toLowerCase()}, and their history of ${topProvider.completedOrders ?? 0} completed orders (${(topProvider.rating ?? 5).toFixed(1)}★ rating, ~${topProvider.avgAcceptanceMinutes ?? 2}m response) scored ${topProvider.matchScore ?? 90}/100.`
     : `No online card provider currently matches ${selectedOffer.bankName} for ₹${selectedOffer.cardChargeAmount.toLocaleString('en-IN')}.`;
 
   const alternativeComparison =

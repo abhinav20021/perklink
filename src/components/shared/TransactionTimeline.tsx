@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Circle,
   Clock,
+  RotateCcw,
   ShieldAlert,
   Truck,
   Wallet,
@@ -158,18 +159,36 @@ export function TransactionDetailCard({
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-1.5 text-xs">
             <p className="font-bold text-slate-800">Separated Order & Mandate State</p>
             <p className="text-slate-600">
-              <span className="text-slate-400">UPI Mandate:</span>{' '}
+              <span className="text-slate-400">Shopper UPI Mandate:</span>{' '}
               <strong className="text-slate-800">
                 {upiMandate ? `${upiMandate.status} (${upiMandate.frequency})` : 'Not initialised'}
               </strong>
             </p>
             <p className="text-slate-600">
-              <span className="text-slate-400">Gateway Callback:</span>{' '}
+              <span className="text-slate-400">Card Payment:</span>{' '}
               <strong className="text-slate-800">
-                {tx.paymentSimulation
-                  ? `${tx.paymentSimulation.status} (${tx.paymentSimulation.paymentGatewayTxId})`
-                  : 'Pending checkout'}
+                {tx.cardPaymentStatus || 'NOT_INITIATED'}
               </strong>
+            </p>
+            <p className="text-slate-600">
+              <span className="text-slate-400">Refund Protection Mandate:</span>{' '}
+              {item.providerMandateSummary ? (
+                <strong className={item.providerMandateSummary.authorized ? 'text-emerald-700' : 'text-amber-700'}>
+                  {item.providerMandateSummary.authorized ? 'Authorised ✓ (Shopper Protected)' : item.providerMandateSummary.status}
+                </strong>
+              ) : item.providerMandate ? (
+                <strong className={item.providerMandate.status === 'AUTHORISED' ? 'text-emerald-700' : 'text-amber-700'}>
+                  {item.providerMandate.mandateRef} ({item.providerMandate.status}) • Cap: {formatInr(item.providerMandate.maxAmount)}
+                </strong>
+              ) : (
+                <strong className="text-slate-700">{tx.providerMandateStatus || 'NOT_CREATED'}</strong>
+              )}
+            </p>
+            <p className="text-slate-600">
+              <span className="text-slate-400">Settlement Status:</span>{' '}
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-slate-200 text-slate-800">
+                {tx.settlementStatus || 'BLOCKED_PAYMENT_PENDING'}
+              </span>
             </p>
             <p className="text-slate-600">
               <span className="text-slate-400">Merchant Order:</span>{' '}
@@ -223,6 +242,55 @@ export function TransactionDetailCard({
             )}
           </div>
         </div>
+
+        {/* Cancellation, Merchant Refund & Provider Recovery Alert Banner */}
+        {tx.merchantRefundStatus && tx.merchantRefundStatus !== 'NONE' && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-amber-950 flex items-center gap-2">
+                <RotateCcw className="h-4 w-4 text-amber-600" />
+                Return &amp; Refund Recovery Life-cycle Active
+              </span>
+              <Badge variant={tx.recoveryStatus === 'PROVIDER_RECOVERY_SUCCESS' ? 'green' : tx.recoveryStatus === 'RECOVERY_FAILED' ? 'red' : 'amber'}>
+                {tx.recoveryStatus}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="bg-white/80 p-2 rounded-lg border border-amber-200">
+                <span className="text-slate-500 block text-[11px]">Merchant Refund</span>
+                <strong className="text-slate-900">{tx.merchantRefundStatus}</strong>
+              </div>
+              <div className="bg-white/80 p-2 rounded-lg border border-amber-200">
+                <span className="text-slate-500 block text-[11px]">Provider Mandate</span>
+                <strong className={tx.providerMandateStatus === 'AUTHORISED' ? 'text-emerald-700' : 'text-amber-700'}>
+                  {tx.providerMandateStatus}
+                </strong>
+              </div>
+              <div className="bg-white/80 p-2 rounded-lg border border-amber-200">
+                <span className="text-slate-500 block text-[11px]">Provider Recovery</span>
+                <strong className={tx.recoveryStatus === 'PROVIDER_RECOVERY_SUCCESS' ? 'text-emerald-700' : 'text-amber-700'}>
+                  {tx.recoveryStatus}
+                </strong>
+              </div>
+              <div className="bg-white/80 p-2 rounded-lg border border-amber-200">
+                <span className="text-slate-500 block text-[11px]">Shopper Refund</span>
+                <strong className={tx.shopperRefundStatus === 'SHOPPER_REFUND_SUCCESS' ? 'text-emerald-700' : 'text-amber-700'}>
+                  {tx.shopperRefundStatus}
+                </strong>
+              </div>
+            </div>
+            {item.refundRecoveries && item.refundRecoveries.length > 0 && (
+              <div className="mt-2 text-xs text-slate-700 bg-white/60 p-2 rounded border border-amber-200/60">
+                <span className="font-bold">Recovery Records:</span>{' '}
+                {item.refundRecoveries.map((rec) => (
+                  <span key={rec.id} className="inline-block mr-2 font-mono">
+                    [{rec.id}: {formatInr(rec.recoveryAmount)} • {rec.recoveryStatus} • Shopper: {rec.shopperRefundStatus}]
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

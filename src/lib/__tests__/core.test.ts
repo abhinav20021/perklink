@@ -44,7 +44,7 @@ describe('PerkLink Core Deterministic Engines', () => {
     expect(hdfcSelect.eligibilityStatus).toBe('POTENTIALLY_ELIGIBLE');
   });
 
-  it('ranks online higher-rated SBI provider Arjun ahead of busy Neha', () => {
+  it('ranks established and newly enrolled matching SBI providers with Arjun as top pick', () => {
     const db = createSeedDatabase();
     const laptop = db.products.find((p) => p.id === 'prod-laptop-asus')!;
     const sbiOffer = db.bankOffers.find((o) => o.id === 'offer-sbi-10')!;
@@ -59,10 +59,25 @@ describe('PerkLink Core Deterministic Engines', () => {
       consents: db.consentRecords,
     });
 
-    expect(matches.length).toBe(2);
-    expect(matches[0].providerId).toBe('prov-arjun');
-    expect(matches[0].isRecommended).toBe(true);
-    expect(matches[0].matchScore).toBeGreaterThan(matches[1].matchScore);
+    const established = matches.filter((m) => !m.isNewProvider);
+    const newlyEnrolled = matches.filter((m) => m.isNewProvider);
+
+    expect(established.length).toBe(6);
+    expect(established[0].providerId).toBe('prov-arjun');
+    expect(established[0].isRecommended).toBe(true);
+    expect(established[0].matchScore!).toBeGreaterThan(established[1].matchScore!);
+    expect(established[0].providerAlias).toBe('Provider 01');
+
+    // New providers are included without disqualification, with honest null score/rating
+    expect(newlyEnrolled.length).toBe(3);
+    for (const newProv of newlyEnrolled) {
+      expect(newProv.isNewProvider).toBe(true);
+      expect(newProv.matchScore).toBeNull();
+      expect(newProv.rating).toBeUndefined();
+      expect(newProv.completedOrders).toBe(0);
+      expect(newProv.maxTransactionAmount).toBeGreaterThanOrEqual(46999);
+      expect(newProv.providerAlias).toMatch(/^Provider \d{2}$/);
+    }
   });
 
   it('blocks illegal state jumps and enforces preconditions on server FSM', () => {
@@ -83,7 +98,7 @@ describe('PerkLink Core Deterministic Engines', () => {
     ).toThrow(StateTransitionError);
   });
 
-  it('strictly masks Class B PII (address, phone, delivery instructions) from Class A Provider projection', () => {
+  it('strictly masks Shopper PII (address, phone, delivery instructions) from Perk Provider projection', () => {
     const db = createSeedDatabase();
     const tx = db.transactions.find((t) => t.id === 'PLK-2026-1001')!;
 
@@ -110,5 +125,33 @@ describe('PerkLink Core Deterministic Engines', () => {
     expect(parsed.minimum_transaction).toBe(10000);
     expect(parsed.emi_eligible).toBe(false);
     expect(parsed.offer_type).toBe('instant_discount');
+  });
+
+  it('filters out ineligible (ICICI 60k, SBI EMI) and unverified (HDFC select) offers from shopper projection', () => {
+    const db = createSeedDatabase();
+    const laptop = db.products.find((p) => p.id === 'prod-laptop-asus')!;
+    const comparisons = evaluateAllOffers(
+      laptop,
+      db.bankOffers,
+      'PLK-TEST-ELIGIBLE',
+      db.config,
+      { now: new Date('2026-11-12T12:00:00Z') }
+    );
+    db.savingsComparisons.push(...comparisons);
+
+    const tx = db.transactions.find((t) => t.id === 'PLK-2026-1001')!;
+    tx.id = 'PLK-TEST-ELIGIBLE';
+    const shopperView = projectTransactionForRole(db, tx, 'SHOPPER_B');
+
+    // Only confirmed ELIGIBLE offers must be visible to the shopper
+    expect(shopperView.savingsComparisons.every((c) => c.eligibilityStatus === 'ELIGIBLE')).toBe(true);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-sbi-10')).toBe(true);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-hdfc-1500')).toBe(true);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-axis-1000')).toBe(true);
+
+    // Ineligible and unverified offers must NOT be visible
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-icici-60k')).toBe(false);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-sbi-emi')).toBe(false);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-hdfc-select')).toBe(false);
   });
 });

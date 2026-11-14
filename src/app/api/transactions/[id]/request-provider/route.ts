@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { handleApiError } from '@/lib/api-response';
+import { ApiError, handleApiError } from '@/lib/api-response';
 import { getRequiredSession } from '@/lib/auth/session';
 import { mutateDatabase, projectTransactionForRole } from '@/lib/db/store';
+import { evaluateOfferForProduct } from '@/lib/finance/savings-engine';
 import { validateTransitionPreconditions } from '@/lib/state-machine/transaction-fsm';
 
 const RequestProviderSchema = z.object({
@@ -23,10 +24,52 @@ export async function POST(
       const tx = db.transactions.find((t) => t.id === id);
       if (!tx) throw new Error(`Transaction ${id} not found`);
 
-      const provider = db.providerProfiles.find((p) => p.id === body.providerId);
-      const card = db.cardProductMetadata.find((c) => c.id === body.cardMetadataId);
+      let resolvedProviderId = body.providerId;
+      let resolvedCardMetadataId = body.cardMetadataId;
+
+      // Transparent resolution for masked Shopper provider references
+      if (
+        body.providerId.startsWith('prov-masked-') ||
+        body.providerId.startsWith('Provider ') ||
+        body.cardMetadataId.startsWith('card-masked-')
+      ) {
+        const txMatches = db.providerMatches.filter((m) => m.transactionId === tx.id);
+        let matchIdx = -1;
+        if (body.providerId.startsWith('prov-masked-')) {
+          matchIdx = parseInt(body.providerId.replace('prov-masked-', ''), 10) - 1;
+        } else if (body.providerId.startsWith('Provider ')) {
+          matchIdx = parseInt(body.providerId.replace('Provider ', ''), 10) - 1;
+        } else if (body.cardMetadataId.startsWith('card-masked-')) {
+          matchIdx = parseInt(body.cardMetadataId.replace('card-masked-', ''), 10) - 1;
+        }
+
+        const matched = (matchIdx >= 0 && txMatches[matchIdx]) ? txMatches[matchIdx] : txMatches[0];
+        if (matched) {
+          resolvedProviderId = matched.providerId;
+          resolvedCardMetadataId = matched.cardMetadataId;
+        }
+      }
+
+      const provider = db.providerProfiles.find((p) => p.id === resolvedProviderId);
+      const card = db.cardProductMetadata.find((c) => c.id === resolvedCardMetadataId);
       if (!provider || !card) {
         throw new Error('Selected provider or card metadata not found.');
+      }
+
+      if (!tx.offerId) {
+        throw new ApiError('No eligible bank offer selected for this purchase request.', 400);
+      }
+
+      const product = db.products.find((p) => p.id === tx.productId);
+      const offer = db.bankOffers.find((o) => o.id === tx.offerId);
+      if (!product || !offer) {
+        throw new ApiError('Product or selected bank offer not found.', 404);
+      }
+
+      // Revalidate offer eligibility before purchase-request submission
+      const evalResult = evaluateOfferForProduct(product, offer, tx.id, db.config);
+      if (evalResult.eligibilityStatus !== 'ELIGIBLE') {
+        throw new ApiError(`Selected offer is no longer eligible: ${evalResult.eligibilityReason}`, 400);
       }
 
       validateTransitionPreconditions(tx, 'PROVIDER_MATCHING', session.role);
@@ -37,6 +80,17 @@ export async function POST(
       tx.mandateAmount =
         tx.cardChargeAmount + tx.providerReward + tx.platformFee;
       tx.shopperSavings = Math.max(0, tx.listedPrice - tx.mandateAmount);
+      tx.selectedOfferSnapshot = {
+        offerId: offer.id,
+        bankName: offer.bankName,
+        cardType: offer.cardType,
+        offerTitle: offer.offerTitle,
+        discountPercentage: evalResult.discountPercentage,
+        maxDiscount: evalResult.maxDiscount,
+        actualDiscount: evalResult.actualDiscount,
+        cardChargeAmount: evalResult.cardChargeAmount,
+        shopperNetSavings: evalResult.shopperNetSavings,
+      };
       tx.status = 'PROVIDER_MATCHING';
       tx.updatedAt = new Date().toISOString();
 
@@ -53,6 +107,10 @@ export async function POST(
         providerId: provider.id,
         cardMetadataId: card.id,
         offeredReward: tx.providerReward,
+        offerId: offer.id,
+        bankName: offer.bankName,
+        cardType: offer.cardType,
+        discountAmount: evalResult.actualDiscount,
         status: 'PENDING',
         createdAt: tx.updatedAt,
       });

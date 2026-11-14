@@ -170,7 +170,7 @@ function MandateContent() {
           <Card>
             <CardContent className="py-12 text-center space-y-3">
               <p className="text-sm text-slate-600">
-                No active UPI Mandate is currently pending. First select an offer &amp; provider, and wait for Class A to accept the request.
+                No active UPI Mandate is currently pending. First select an offer &amp; provider, and wait for Perk Provider to accept the request.
               </p>
               <Link href="/shopper/orders">
                 <Button variant="primary" size="sm">
@@ -470,8 +470,8 @@ function MandateContent() {
               </Card>
             )}
 
-            {/* Stage 4: Mandate Approved Confirmation Animation */}
-            {stage === 'SUCCESS' && (
+            {/* Stage 4: Mandate Approved Confirmation */}
+            {stage === 'SUCCESS' && mandate.status === 'APPROVED' && (
               <Card className="max-w-lg mx-auto border-2 border-emerald-300 overflow-hidden shadow-lg">
                 <div className="bg-gradient-to-br from-emerald-600 to-[#00B86B] text-white p-8 text-center space-y-3">
                   <div className="relative inline-flex items-center justify-center">
@@ -481,45 +481,52 @@ function MandateContent() {
                     </div>
                   </div>
                   <h2 className="text-2xl font-extrabold">
-                    UPI Mandate Approved Successfully
+                    Mandate Successfully Authorised!
                   </h2>
                   <p className="text-sm text-emerald-50">
                     Your one-time payment mandate has been authorised in the PerkLink simulation environment.
                   </p>
                 </div>
-                <CardContent className="space-y-4">
-                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2 text-xs tabular-nums">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Transaction ID</span>
-                      <span className="font-mono font-bold text-[#002970]">
-                        {detail.transaction.id}
+                <CardContent className="space-y-5 p-6">
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2.5 text-xs tabular-nums">
+                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Mandate Reference ID</span>
+                      <span className="font-mono font-bold text-[#002970]">{mandate.mandateRef}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Mandate Status</span>
+                      <Badge variant="green" className="font-bold">Authorised</Badge>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Associated Purchase Request ID</span>
+                      <span className="font-mono font-bold text-slate-800">
+                        {detail.purchaseRequest?.id ?? detail.transaction.id}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Mandate Reference</span>
-                      <span className="font-mono font-semibold">{mandate.mandateRef}</span>
+                    <div className="flex justify-between items-center py-1 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Authorisation Timestamp</span>
+                      <span className="font-semibold text-slate-800">
+                        {formatDateTime(mandate.authorisedAt || new Date().toISOString())}
+                      </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Authorised Amount (ONE TIME)</span>
-                      <span className="font-extrabold text-[#002970]">
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-slate-500 font-medium">Authorised Amount (ONE TIME)</span>
+                      <span className="font-extrabold text-base text-[#002970]">
                         {formatInr(mandate.amount)}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Mandate Status</span>
-                      <Badge variant="green">{mandate.status} (Execution Deferred)</Badge>
-                    </div>
                   </div>
 
-                  <div className="rounded-xl bg-sky-50 border border-sky-200 p-3 text-xs text-[#002970]">
-                    <strong>Next Step:</strong> Switch to <strong>Class A: Provider</strong> (top switcher) and open <strong>Card Checkout</strong> to complete the simulated card payment and merchant order creation.
-                  </div>
-
-                  <div className="flex justify-between gap-2">
-                    <Link href={`/shopper/orders?txId=${detail.transaction.id}`} className="flex-1">
-                      <Button variant="primary" className="w-full">
-                        Track Order &amp; Next Steps
+                  <div className="space-y-2.5 pt-2">
+                    <Link href="/shopper" className="block w-full">
+                      <Button variant="paytm" size="lg" className="w-full font-bold shadow-md flex items-center justify-center gap-2">
+                        Go to Shopper Dashboard
                         <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                    <Link href={`/shopper/orders?txId=${detail.transaction.id}`} className="block w-full">
+                      <Button variant="outline" size="md" className="w-full font-semibold border-slate-300 text-[#002970] hover:bg-sky-50 flex items-center justify-center gap-2">
+                        View My Orders
                       </Button>
                     </Link>
                   </div>

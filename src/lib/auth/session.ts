@@ -21,13 +21,13 @@ export const DEMO_IDENTITIES: Array<{
   {
     email: 'shopper@perklink.demo',
     role: 'SHOPPER_B',
-    label: 'Class B — Shopper',
+    label: 'Shopper',
     subtitle: 'Rahul Sharma • Discover offers, save via AI & approve UPI mandate',
   },
   {
     email: 'provider@perklink.demo',
     role: 'PROVIDER_A',
-    label: 'Class A — Card Provider',
+    label: 'Perk Provider',
     subtitle: 'Arjun Mehta • SBI Cashback •••• 4387 • Accept requests & earn ₹250',
   },
   {

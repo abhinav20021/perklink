@@ -23,6 +23,24 @@ export async function POST(
       const verificationResults = db.verificationResults.filter(
         (v) => v.transactionId === tx.id
       );
+      const provMandate = (db.providerMandates ?? []).find(
+        (m) => m.transactionId === tx.id
+      );
+      if (provMandate && provMandate.status !== 'AUTHORISED') {
+        throw new Error(
+          'Settlement blocked: Provider Refund Protection Mandate is mandatory and must be AUTHORISED.'
+        );
+      }
+      if (
+        tx.merchantRefundStatus &&
+        ['RETURN_REQUESTED', 'MERCHANT_REFUND_PENDING', 'MERCHANT_REFUND_CONFIRMED'].includes(
+          tx.merchantRefundStatus
+        )
+      ) {
+        throw new Error(
+          'Settlement blocked: Cannot release settlement while a qualifying return, cancellation or refund process is pending.'
+        );
+      }
 
       validateTransitionPreconditions(tx, 'SETTLEMENT_COMPLETED', session.role, {
         mandate,
@@ -33,6 +51,7 @@ export async function POST(
       const nowIso = new Date().toISOString();
       const fromState = tx.status;
       tx.status = 'SETTLEMENT_COMPLETED';
+      tx.settlementStatus = 'SETTLED';
       tx.updatedAt = nowIso;
 
       if (mandate) {
@@ -69,7 +88,7 @@ export async function POST(
       // Increment provider completed orders count in demo profile
       const provider = db.providerProfiles.find((p) => p.id === tx.providerId);
       if (provider) {
-        provider.completedOrders += 1;
+        provider.completedOrders = (provider.completedOrders ?? 0) + 1;
       }
 
       db.auditLogs.push({

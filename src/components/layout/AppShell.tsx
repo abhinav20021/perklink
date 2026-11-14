@@ -46,7 +46,6 @@ const ROLE_NAV: Record<
     { href: '/provider', label: 'Dashboard', icon: Home },
     { href: '/provider/requests', label: 'Requests', icon: Inbox },
     { href: '/provider/payment', label: 'Card Checkout', icon: CreditCard },
-    { href: '/provider/upload-invoice', label: 'Fallback Invoice', icon: FileSearch },
   ],
   ADMIN_OPS: [
     { href: '/admin', label: 'Ops Overview', icon: Activity },
@@ -60,13 +59,13 @@ const PERSONAS: Array<{ email: string; role: UserRole; short: string; defaultPat
   {
     email: 'shopper@perklink.demo',
     role: 'SHOPPER_B',
-    short: 'Class B: Shopper',
+    short: 'Shopper',
     defaultPath: '/shopper',
   },
   {
     email: 'provider@perklink.demo',
     role: 'PROVIDER_A',
-    short: 'Class A: Provider',
+    short: 'Perk Provider',
     defaultPath: '/provider',
   },
   {

@@ -71,7 +71,7 @@ export default function ProviderRequestsPage() {
       if (!res.ok) throw new Error(data.error || 'Action failed');
       setMessage(
         decision === 'ACCEPT'
-          ? `Request accepted! Transaction ${data.data.transaction.id} moved to MANDATE_PENDING. Next: Class B shopper approves the One-Time UPI Mandate.`
+          ? `Request accepted! Transaction ${data.data.transaction.id} moved to MANDATE_PENDING. Next: Shopper approves the One-Time UPI Mandate.`
           : 'Request declined and returned to offer selection.'
       );
       await loadRequests();
@@ -119,7 +119,7 @@ export default function ProviderRequestsPage() {
         ) : requests.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-sm text-slate-500">
-              No incoming requests yet. Submit a purchase as Class B to see requests appear here.
+              No incoming requests yet. Submit a purchase as Shopper to see requests appear here.
             </CardContent>
           </Card>
         ) : (
@@ -222,6 +222,13 @@ export default function ProviderRequestsPage() {
                             {busyId === req.id ? 'Processing...' : 'Accept Request'}
                           </Button>
                         </div>
+                      ) : txProj.transaction.cardPaymentStatus === 'SUCCESS' && txProj.transaction.providerMandateStatus !== 'AUTHORISED' ? (
+                        <Link href={`/provider/payment?txId=${txProj.transaction.id}`}>
+                          <Button variant="paytm" size="sm">
+                            Complete Refund Mandate
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Button>
+                        </Link>
                       ) : txProj.transaction.status === 'MANDATE_AUTHORISED' ? (
                         <Link href={`/provider/payment?txId=${txProj.transaction.id}`}>
                           <Button variant="primary" size="sm">

@@ -426,7 +426,7 @@ Return valid JSON matching the schema:
     );
   }
   uncertainties.push(
-    'Selected card BIN / variant eligibility requires matching against a registered Class A provider card.'
+    'Selected card BIN / variant eligibility requires matching against a registered Perk Provider card.'
   );
 
   const shopperExplanation = `This ${fallbackProduct.category.toLowerCase().replace(/s$/, '')} (${fallbackProduct.title} at ₹${fallbackProduct.listedPrice.toLocaleString('en-IN')} on ${fallbackProduct.merchant}) may qualify for the SBI 10% instant discount up to ₹2,000, provided the matched cardholder's registered card and full-swipe non-EMI transaction satisfy the offer conditions.`;
