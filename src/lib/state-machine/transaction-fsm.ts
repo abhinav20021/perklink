@@ -50,10 +50,10 @@ export const TRANSITION_RULES: TransitionRule[] = [
   { from: 'PRODUCT_ANALYSED', to: 'OFFER_SELECTED', allowedRoles: ['SHOPPER_B', 'ADMIN_OPS'], description: 'Shopper locked eligible bank offer' },
   { from: 'PRODUCT_ANALYSED', to: 'CANCELLED', allowedRoles: ['SHOPPER_B', 'ADMIN_OPS'], description: 'Shopper cancelled after analysis' },
 
-  { from: 'OFFER_SELECTED', to: 'PROVIDER_MATCHING', allowedRoles: ['SHOPPER_B', 'ADMIN_OPS'], description: 'Purchase request dispatched to matched Class A provider' },
+  { from: 'OFFER_SELECTED', to: 'PROVIDER_MATCHING', allowedRoles: ['SHOPPER_B', 'ADMIN_OPS'], description: 'Purchase request dispatched to matched Perk Provider' },
   { from: 'OFFER_SELECTED', to: 'CANCELLED', allowedRoles: ['SHOPPER_B', 'ADMIN_OPS'], description: 'Shopper cancelled before provider request' },
 
-  { from: 'PROVIDER_MATCHING', to: 'PROVIDER_ACCEPTED', allowedRoles: ['PROVIDER_A', 'ADMIN_OPS'], description: 'Matched Class A provider accepted request' },
+  { from: 'PROVIDER_MATCHING', to: 'PROVIDER_ACCEPTED', allowedRoles: ['PROVIDER_A', 'ADMIN_OPS'], description: 'Matched Perk Provider accepted request' },
   { from: 'PROVIDER_MATCHING', to: 'OFFER_SELECTED', allowedRoles: ['PROVIDER_A', 'SHOPPER_B', 'ADMIN_OPS'], description: 'Provider declined; shopper may choose another provider' },
   { from: 'PROVIDER_MATCHING', to: 'CANCELLED', allowedRoles: ['SHOPPER_B', 'ADMIN_OPS'], description: 'Shopper cancelled during provider matching' },
 
@@ -102,7 +102,7 @@ export const TRANSITION_RULES: TransitionRule[] = [
   { from: 'INVOICE_VERIFIED', to: 'DELIVERED', allowedRoles: ['ADMIN_OPS'], description: 'Verified order marked delivered' },
   { from: 'INVOICE_VERIFIED', to: 'SETTLEMENT_ELIGIBLE', allowedRoles: ['ADMIN_OPS'], description: 'Verified after delivery & return window completion' },
 
-  { from: 'SHIPPED', to: 'DELIVERED', allowedRoles: ['ADMIN_OPS'], description: 'Simulated merchant order delivered to Class B' },
+  { from: 'SHIPPED', to: 'DELIVERED', allowedRoles: ['ADMIN_OPS'], description: 'Simulated merchant order delivered to Shopper' },
   { from: 'SHIPPED', to: 'INVOICE_UNDER_REVIEW', allowedRoles: ['PROVIDER_A', 'ADMIN_OPS'], description: 'Fallback invoice submitted while in transit' },
   { from: 'SHIPPED', to: 'DISPUTED', allowedRoles: ['SHOPPER_B', 'ADMIN_OPS'], description: 'Shipment issue reported' },
 
@@ -181,7 +181,7 @@ export function validateTransitionPreconditions(
 
   if (targetState === 'PROVIDER_MATCHING' && !tx.deliveryInfo) {
     throw new StateTransitionError(
-      'Class B delivery information is required before requesting a card provider.',
+      'Shopper delivery information is required before requesting a card provider.',
       400
     );
   }
@@ -201,7 +201,7 @@ export function validateTransitionPreconditions(
   if (targetState === 'CARD_PAYMENT_PENDING') {
     if (!context.mandate || context.mandate.status !== 'APPROVED') {
       throw new StateTransitionError(
-        'Class B one-time UPI mandate must be APPROVED before provider card checkout.',
+        'Shopper one-time UPI mandate must be APPROVED before provider card checkout.',
         409
       );
     }

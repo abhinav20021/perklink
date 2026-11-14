@@ -93,13 +93,13 @@ function OrdersContent() {
   function renderNextStepGuide(item: RoleProjectedTransaction) {
     const s = item.transaction.status;
     if (s === 'PROVIDER_MATCHING') {
-      return 'Request sent! Switch to Class A: Provider in the top bar and accept this request in /provider/requests.';
+      return 'Request sent! Switch to Perk Provider in the top bar and accept this request in /provider/requests.';
     }
     if (s === 'MANDATE_PENDING') {
       return 'Provider accepted! Click "Approve UPI Mandate" to authorise the one-time simulated UPI mandate.';
     }
     if (s === 'MANDATE_AUTHORISED') {
-      return 'UPI Mandate approved! Switch to Class A: Provider and open Card Checkout to complete simulated card payment.';
+      return 'UPI Mandate approved! Switch to Perk Provider and open Card Checkout to complete simulated card payment.';
     }
     if (s === 'ORDER_CREATED' || s === 'SHIPPED' || s === 'DELIVERED' || s === 'RETURN_WINDOW_ACTIVE') {
       return 'Simulated merchant order is active! Switch to Paytm Ops Admin (/admin/transactions) to progress delivery & simulate settlement.';
@@ -441,7 +441,7 @@ function OrdersContent() {
                   </div>
                   <div className="space-y-1">
                     <p className="font-bold text-[#002970] text-sm">
-                      Private Delivery Recipient (Visible to Class B &amp; Merchant Only)
+                      Private Delivery Recipient (Visible to Shopper &amp; Merchant Only)
                     </p>
                     <p>
                       <span className="text-slate-500">Recipient:</span>{' '}

@@ -98,7 +98,7 @@ describe('PerkLink Core Deterministic Engines', () => {
     ).toThrow(StateTransitionError);
   });
 
-  it('strictly masks Class B PII (address, phone, delivery instructions) from Class A Provider projection', () => {
+  it('strictly masks Shopper PII (address, phone, delivery instructions) from Perk Provider projection', () => {
     const db = createSeedDatabase();
     const tx = db.transactions.find((t) => t.id === 'PLK-2026-1001')!;
 

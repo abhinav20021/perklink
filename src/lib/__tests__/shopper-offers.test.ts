@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSeedDatabase } from '../db/seed';
 import { rankProvidersForOffer } from '../matching/provider-matcher';
-import { evaluateAllOffers } from '../finance/savings-engine';
 
 describe('Shopper Offers & Provider Matching Enhancements', () => {
   it('correctly partitions established and new providers across all banks', () => {

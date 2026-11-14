@@ -27,7 +27,7 @@ export async function POST(
       let resolvedProviderId = body.providerId;
       let resolvedCardMetadataId = body.cardMetadataId;
 
-      // Transparent resolution for masked Class B provider references
+      // Transparent resolution for masked Shopper provider references
       if (
         body.providerId.startsWith('prov-masked-') ||
         body.providerId.startsWith('Provider ') ||

@@ -151,7 +151,7 @@ export async function POST(req: Request) {
         id: `ref-${Date.now()}`,
         transactionId: tx.id,
         amount: recoveryAmount,
-        reason: `Merchant refund (${body.merchantRefundId}) recovered via Class A Protection Mandate & returned to Class B.`,
+        reason: `Merchant refund (${body.merchantRefundId}) recovered via Perk Provider Protection Mandate & returned to Shopper.`,
         status: 'COMPLETED',
         initiatedAt: nowIso,
         completedAt: nowIso,

@@ -341,7 +341,7 @@ export default function AdminTransactionsPage() {
                     Simulate Merchant Card Refund &amp; Mandate Recovery (Scenarios C, D, E)
                   </p>
                   <p className="text-slate-500 text-[11px]">
-                    Tests recovery against Class A&apos;s refund protection mandate and subsequent Class B reimbursement.
+                    Tests recovery against Perk Provider&apos;s refund protection mandate and subsequent Shopper reimbursement.
                   </p>
                 </div>
 

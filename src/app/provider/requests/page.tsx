@@ -71,7 +71,7 @@ export default function ProviderRequestsPage() {
       if (!res.ok) throw new Error(data.error || 'Action failed');
       setMessage(
         decision === 'ACCEPT'
-          ? `Request accepted! Transaction ${data.data.transaction.id} moved to MANDATE_PENDING. Next: Class B shopper approves the One-Time UPI Mandate.`
+          ? `Request accepted! Transaction ${data.data.transaction.id} moved to MANDATE_PENDING. Next: Shopper approves the One-Time UPI Mandate.`
           : 'Request declined and returned to offer selection.'
       );
       await loadRequests();
@@ -119,7 +119,7 @@ export default function ProviderRequestsPage() {
         ) : requests.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-sm text-slate-500">
-              No incoming requests yet. Submit a purchase as Class B to see requests appear here.
+              No incoming requests yet. Submit a purchase as Shopper to see requests appear here.
             </CardContent>
           </Card>
         ) : (

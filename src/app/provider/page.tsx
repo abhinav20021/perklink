@@ -106,7 +106,7 @@ export default function ProviderDashboardPage() {
           <div className="space-y-2">
             <Badge variant="blue" className="bg-white/15 text-white border-white/20">
               <CreditCard className="h-3.5 w-3.5 text-[#00BAF2]" />
-              Class A — Card Provider Workspace
+              Perk Provider Dashboard
             </Badge>
             <h1 className="text-2xl sm:text-3xl font-extrabold">
               {provider ? provider.displayAlias : 'Arjun Mehta — Card Provider'}
@@ -242,7 +242,7 @@ export default function ProviderDashboardPage() {
             <CardContent className="space-y-4 text-sm">
               <p className="text-slate-600">{consent?.scopeSummary}</p>
               <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600">
-                • Shopper full name, mobile number, and street address are masked on all Class A API responses.<br />
+                • Shopper full name, mobile number, and street address are masked on all Perk Provider API responses.<br />
                 • Card checkout uses an isolated simulation screen without requesting real credentials.
               </div>
               <Button variant="outline" size="sm" onClick={toggleConsent}>

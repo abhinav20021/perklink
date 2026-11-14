@@ -186,7 +186,7 @@ export async function POST(req: Request) {
           transactionId: tx.id,
           merchantOrderId,
           status: 'ORDER_PLACED',
-          description: `Simulated merchant order placed on ${product.merchant} with separated Class A payer and Class B recipient identities.`,
+          description: `Simulated merchant order placed on ${product.merchant} with separated Perk Provider payer and Shopper recipient identities.`,
           timestamp: nowIso,
           actor: 'Simulated Merchant Checkout',
         },

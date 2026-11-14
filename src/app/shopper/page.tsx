@@ -65,7 +65,7 @@ export default function ShopperDashboardPage() {
             <div className="space-y-3 max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-sky-100">
                 <Bot className="h-3.5 w-3.5 text-[#00BAF2]" />
-                Class B — Shopper Workspace (Rahul Sharma)
+                Shopper Workspace (Rahul Sharma)
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
                 Find the best bank discount on any product link

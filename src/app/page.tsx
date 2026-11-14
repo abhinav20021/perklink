@@ -20,7 +20,7 @@ const PARTICIPANT_CARDS = [
   {
     email: 'shopper@perklink.demo',
     displayEmail: 'shopper@perklink.in',
-    role: 'Class B — Shopper',
+    role: 'Shopper',
     name: 'Rahul Sharma',
     desc: 'Paste product URLs, inspect AI offer analysis & savings comparisons, select a matched provider & approve simulated UPI mandate.',
     target: '/shopper',
@@ -30,7 +30,7 @@ const PARTICIPANT_CARDS = [
   {
     email: 'provider@perklink.demo',
     displayEmail: 'provider@perklink.in',
-    role: 'Class A — Card Provider',
+    role: 'Perk Provider',
     name: 'Arjun Mehta (SBI •••• 4387)',
     desc: 'View masked purchase requests (zero shopper PII), complete simulated 3DS card checkout & earn ₹250 transparent reward.',
     target: '/provider',
@@ -185,7 +185,7 @@ export default function HomePage() {
                   <span>-₹2,000</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-600">Class A Card Charge</span>
+                  <span className="text-slate-600">Perk Provider Card Charge</span>
                   <span className="font-semibold">₹46,999</span>
                 </div>
                 <div className="flex justify-between">
@@ -200,7 +200,7 @@ export default function HomePage() {
 
               <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
                 <Lock className="h-3.5 w-3.5 text-[#002970] shrink-0" />
-                Class A never sees Class B’s address/phone; no card numbers or real UPI PINs are ever shared.
+                Perk Providers never see Shopper address or phone; no card numbers or real UPI PINs are ever shared.
               </p>
             </CardContent>
           </Card>

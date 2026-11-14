@@ -1419,7 +1419,7 @@ export function createSeedDatabase(): PerkLinkDatabase {
         createdAt: iso(-20),
         updatedAt: iso(-18),
       },
-      // 3. Pending provider request (Sony Headphones waiting in Class A requests queue)
+      // 3. Pending provider request (Sony Headphones waiting in Perk Provider requests queue)
       {
         id: 'PLK-2026-1003',
         status: 'PROVIDER_MATCHING',
@@ -1840,7 +1840,7 @@ export function createSeedDatabase(): PerkLinkDatabase {
         transactionId: 'PLK-2026-1001',
         merchantOrderId: 'MER-FK-884920',
         status: 'DELIVERED',
-        description: 'Delivered to Class B recipient in Hyderabad (500081).',
+        description: 'Delivered to Shopper recipient in Hyderabad (500081).',
         timestamp: iso(-24),
         actor: 'Flipkart Logistics Simulation',
       },

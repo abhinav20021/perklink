@@ -19,9 +19,9 @@ const DeliveryAdvanceSchema = z.object({
 const DELIVERY_DESCRIPTIONS: Record<DeliveryStatus, string> = {
   ORDER_PLACED: 'Order placed via simulated merchant checkout.',
   CONFIRMED: 'Merchant confirmed order.',
-  SHIPPED: 'Dispatched from fulfilment hub to Class B city.',
+  SHIPPED: 'Dispatched from fulfilment hub to Shopper city.',
   OUT_FOR_DELIVERY: 'Out for delivery with local courier partner.',
-  DELIVERED: 'Delivered to Class B recipient (masked from Class A).',
+  DELIVERED: 'Delivered to Shopper recipient (masked from Perk Provider).',
   RETURN_WINDOW_ACTIVE: 'Merchant return & inspection window active.',
   RETURN_WINDOW_COMPLETED:
     'Return window completed cleanly; all settlement conditions satisfied.',

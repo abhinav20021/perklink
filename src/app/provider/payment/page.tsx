@@ -1,7 +1,6 @@
 'use client';
 
 import React, { Suspense, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
@@ -207,10 +206,10 @@ function ProviderPaymentContent() {
               SIMULATION MODE — HOSTED CARD CHECKOUT
             </Badge>
             <h1 className="text-2xl font-extrabold text-[#002970]">
-              Class A Card Payment Simulation
+              Perk Provider Card Payment Simulation
             </h1>
             <p className="text-sm text-slate-600">
-              Complete the simulated issuer checkout after Class B&apos;s UPI mandate is approved. No real card credentials, CVV, or OTP are collected.
+              Complete the simulated issuer checkout after Shopper&apos;s UPI mandate is approved. No real card credentials, CVV, or OTP are collected.
             </p>
           </div>
 
@@ -252,7 +251,7 @@ function ProviderPaymentContent() {
                 <CardContent className="flex items-center gap-3 text-sm text-amber-900">
                   <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
                   <span>
-                    Waiting for Class B Shopper to approve the One-Time UPI Mandate ({formatInr(detail.transaction.mandateAmount)}). Switch to <strong>Class B: Shopper</strong> → <strong>UPI Mandate</strong> first.
+                    Waiting for Shopper to approve the One-Time UPI Mandate ({formatInr(detail.transaction.mandateAmount)}). Switch to <strong>Shopper</strong> → <strong>UPI Mandate</strong> first.
                   </span>
                 </CardContent>
               </Card>
@@ -309,7 +308,7 @@ function ProviderPaymentContent() {
                       • Delivery Destination (Masked): <strong>{detail.transaction.maskedDestination}</strong>
                     </p>
                     <p className="text-slate-600">
-                      • Class B UPI Mandate Status: <strong>{detail.upiMandate?.status ?? 'PENDING'}</strong>
+                      • Shopper UPI Mandate Status: <strong>{detail.upiMandate?.status ?? 'PENDING'}</strong>
                     </p>
                   </div>
 
@@ -731,11 +730,11 @@ function ProviderPaymentContent() {
                         </p>
                         <p>
                           <span className="text-slate-500">Payment Authoriser:</span>{' '}
-                          <strong>Class A ({detail.merchantOrder.payerDisplayLabel})</strong>
+                          <strong>Perk Provider ({detail.merchantOrder.payerDisplayLabel})</strong>
                         </p>
                         <p>
                           <span className="text-slate-500">Delivery Recipient:</span>{' '}
-                          <strong>Class B ({detail.merchantOrder.maskedDestination})</strong>
+                          <strong>Shopper ({detail.merchantOrder.maskedDestination})</strong>
                         </p>
                         <p>
                           <span className="text-slate-500">Expected Delivery Date:</span>{' '}
@@ -746,15 +745,10 @@ function ProviderPaymentContent() {
                   </CardContent>
                 </Card>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white border border-slate-200 p-4 text-xs text-slate-600">
+                <div className="rounded-2xl bg-white border border-slate-200 p-4 text-xs text-slate-600">
                   <span>
-                    <strong>Flow Complete for Class A!</strong> Mandatory Refund Protection Mandate is active. Payout remains held pending delivery and return-period completion. Next: Switch to <strong>Paytm Ops Admin</strong> to manage order delivery &amp; settlement.
+                    <strong>Flow Complete for Perk Provider!</strong> Mandatory Refund Protection Mandate is active. Payout remains held pending delivery and return-period completion. Next: Switch to <strong>Paytm Ops Admin</strong> to manage order delivery &amp; settlement.
                   </span>
-                  <Link href={`/provider/upload-invoice?txId=${detail.transaction.id}`}>
-                    <Button variant="outline" size="sm">
-                      Optional Fallback Invoice Upload
-                    </Button>
-                  </Link>
                 </div>
               </div>
             )}

@@ -73,7 +73,7 @@ export function maskDestination(tx: Transaction): string {
   const pinPrefix = tx.deliveryInfo.pinCode
     ? `${tx.deliveryInfo.pinCode.slice(0, 3)}***`
     : '500***';
-  return `${city}, ${pinPrefix} (Full address private to Class B & Merchant)`;
+  return `${city}, ${pinPrefix} (Full address private to Shopper & Merchant)`;
 }
 
 export function projectTransactionForRole(
@@ -133,10 +133,10 @@ export function projectTransactionForRole(
   const isProvider = role === 'PROVIDER_A';
   const isShopper = role === 'SHOPPER_B';
 
-  // Strict privacy guard: NEVER send Class B shipping address, phone, or delivery instructions to Class A
+  // Strict privacy guard: NEVER send Shopper shipping address, phone, or delivery instructions to Perk Provider
   const { deliveryInfo, ...txWithoutDelivery } = tx;
 
-  // Mask Class A identities for Class B shopper (Provider 01, Provider 02, etc.)
+  // Mask Perk Provider identities for Shopper (Provider 01, Provider 02, etc.)
   const projectedMatches = isShopper
     ? providerMatches.map((m, idx) => {
         const maskedLabel = `Provider ${String(idx + 1).padStart(2, '0')}`;
@@ -281,7 +281,7 @@ export function projectTransactionForRole(
           merchantName: merchantOrder.merchantName,
           payerDisplayLabel: merchantOrder.payerDisplayLabel,
           recipientName: isProvider
-            ? 'Verified Class B Recipient (Masked)'
+            ? 'Verified Shopper Recipient (Masked)'
             : merchantOrder.recipientName,
           pinCode: isProvider
             ? `${merchantOrder.pinCode.slice(0, 3)}***`

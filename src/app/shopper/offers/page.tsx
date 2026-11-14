@@ -41,7 +41,7 @@ function OffersContent() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Private Class B Delivery Form (never shared with Class A)
+  // Private Shopper Delivery Form (never shared with Perk Provider)
   const [recipientName, setRecipientName] = useState('Rahul Sharma');
   const [mobileNumber, setMobileNumber] = useState('+91 98100 44321');
   const [shippingAddress, setShippingAddress] = useState(
@@ -144,7 +144,7 @@ function OffersContent() {
     setSubmitting(true);
 
     try {
-      // 1. Save Class B delivery info privately
+      // 1. Save Shopper delivery info privately
       const delRes = await fetch(
         `/api/transactions/${detail.transaction.id}/delivery`,
         {
@@ -163,7 +163,7 @@ function OffersContent() {
       const delData = await delRes.json();
       if (!delRes.ok) throw new Error(delData.error || 'Invalid delivery details');
 
-      // 2. Dispatch masked request to selected Class A provider
+      // 2. Dispatch masked request to selected Perk Provider
       const [providerId, cardMetadataId] = selectedProviderKey.split('::');
       const reqRes = await fetch(
         `/api/transactions/${detail.transaction.id}/request-provider`,
@@ -401,7 +401,7 @@ function OffersContent() {
                       </>
                     ) : (
                       <p className="text-sm text-amber-800">
-                        No online registered Class A provider matches {activeComparison.bankName} for this amount.
+                        No online registered Perk Provider matches {activeComparison.bankName} for this amount.
                       </p>
                     )}
                   </CardContent>
@@ -422,7 +422,7 @@ function OffersContent() {
                           <Badge variant="navy">{recommendedProviders.length} Established</Badge>
                         </h2>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          Established Class A cardholders with verified transaction history and AI match rankings.
+                          Established Perk Providers with verified transaction history and AI match rankings.
                         </p>
                       </div>
                     </div>
@@ -651,10 +651,10 @@ function OffersContent() {
                 <CardHeader className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                   <div>
                     <h2 className="font-extrabold text-[#002970] text-base">
-                      Stage 4 — Delivery Details (Private to Class B &amp; Merchant)
+                      Stage 4 — Delivery Details (Private to Shopper &amp; Merchant)
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Protected by separated identity architecture: Class A never sees your phone or shipping address.
+                      Protected by separated identity architecture: Perk Provider never sees your phone or shipping address.
                     </p>
                   </div>
                   <Badge variant="navy">
