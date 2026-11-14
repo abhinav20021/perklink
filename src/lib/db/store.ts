@@ -104,6 +104,13 @@ export function projectTransactionForRole(
     ? db.cardProductMetadata.find((c) => c.providerId === providerProfile.id)
     : undefined;
   const upiMandate = db.upiMandates.find((m) => m.transactionId === tx.id);
+  const providerMandate = (db.providerMandates ?? []).find(
+    (m) => m.transactionId === tx.id
+  );
+  const refundRecoveries = (db.refundRecoveries ?? []).filter(
+    (r) => r.transactionId === tx.id
+  );
+  const refundRecovery = refundRecoveries[0];
   const merchantOrder = db.merchantOrders.find((o) => o.transactionId === tx.id);
   const invoiceDocuments = db.invoiceDocuments.filter(
     (i) => i.transactionId === tx.id
@@ -139,7 +146,9 @@ export function projectTransactionForRole(
           providerId: `prov-masked-${String(idx + 1).padStart(2, '0')}`,
           cardMetadataId: `card-masked-${String(idx + 1).padStart(2, '0')}`,
           id: `pm-masked-${tx.id}-${String(idx + 1).padStart(2, '0')}`,
-          aiRationale: m.aiRationale.replace(/^[^\s]+ holds/, `${maskedLabel} holds`),
+          aiRationale: m.isNewProvider
+            ? `${maskedLabel} is a newly enrolled verified cardholder holding an active ${m.cardProduct} (${m.cardCategory}), currently ${m.availabilityStatus.toLowerCase()} with transaction capacity up to ₹${m.maxTransactionAmount.toLocaleString('en-IN')}.`
+            : m.aiRationale.replace(/^[^\s]+(\s+[^\s]+)?(\s+\([^\)]+\))?\s+holds/, `${maskedLabel} holds`),
         };
       })
     : providerMatches;
@@ -186,9 +195,45 @@ export function projectTransactionForRole(
     );
   }
 
+  const cardPaymentStatus =
+    tx.cardPaymentStatus ??
+    (tx.paymentSimulation?.status === 'SUCCESS'
+      ? 'SUCCESS'
+      : tx.paymentSimulation?.status === 'FAILED'
+      ? 'FAILED'
+      : ['CARD_PAYMENT_PENDING'].includes(tx.status)
+      ? 'PENDING'
+      : 'NOT_INITIATED');
+
+  const providerMandateStatus =
+    tx.providerMandateStatus ??
+    (providerMandate?.status ?? 'NOT_CREATED');
+
+  const settlementStatus =
+    tx.settlementStatus ??
+    (tx.status === 'SETTLEMENT_COMPLETED'
+      ? 'SETTLED'
+      : tx.status === 'SETTLEMENT_ELIGIBLE'
+      ? 'SETTLEMENT_ELIGIBLE'
+      : providerMandate?.status === 'AUTHORISED'
+      ? 'MANDATE_AUTHORISED_SETTLEMENT_HELD'
+      : tx.paymentSimulation?.status === 'SUCCESS'
+      ? 'BLOCKED_MANDATE_PENDING'
+      : 'BLOCKED_PAYMENT_PENDING');
+
+  const merchantRefundStatus = tx.merchantRefundStatus ?? 'NONE';
+  const recoveryStatus = tx.recoveryStatus ?? 'NONE';
+  const shopperRefundStatus = tx.shopperRefundStatus ?? 'NONE';
+
   return {
     transaction: {
       ...txWithoutDelivery,
+      cardPaymentStatus,
+      providerMandateStatus,
+      settlementStatus,
+      merchantRefundStatus,
+      recoveryStatus,
+      shopperRefundStatus,
       ...(isShopper && tx.providerId
         ? {
             providerId: `prov-masked-${matchIdx >= 0 ? String(matchIdx + 1).padStart(2, '0') : '01'}`,
@@ -211,6 +256,22 @@ export function projectTransactionForRole(
     providerProfile: projectedProviderProfile,
     cardMetadata: projectedCardMetadata,
     upiMandate,
+    providerMandate: isShopper ? undefined : providerMandate,
+    providerMandateSummary: providerMandate
+      ? {
+          status: providerMandate.status,
+          isProtected: providerMandate.status === 'AUTHORISED',
+          authorized: providerMandate.status === 'AUTHORISED',
+          authorisedAt: providerMandate.authorisedAt,
+          validityEnd: providerMandate.expiresAt,
+        }
+      : undefined,
+    refundRecovery: isShopper && refundRecovery
+      ? { ...refundRecovery, providerMandateId: 'pmand-masked' }
+      : refundRecovery,
+    refundRecoveries: isShopper
+      ? refundRecoveries.map((r) => ({ ...r, providerMandateId: 'pmand-masked' }))
+      : refundRecoveries,
     merchantOrder: merchantOrder
       ? {
           id: merchantOrder.id,

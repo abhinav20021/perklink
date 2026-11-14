@@ -158,7 +158,7 @@ export default function ProviderDashboardPage() {
               <div>
                 <p className="text-xs text-slate-500 font-medium">Completed Fulfilments</p>
                 <p className="text-2xl font-extrabold text-[#002970] tabular-nums">
-                  {provider?.completedOrders ?? 0} orders ({provider?.rating.toFixed(1) ?? '4.9'}★)
+                  {provider?.completedOrders ?? 0} orders ({provider?.rating ? `${provider.rating.toFixed(1)}★` : 'New'})
                 </p>
               </div>
             </CardContent>

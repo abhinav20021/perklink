@@ -38,7 +38,8 @@ export function rankProvidersForOffer(input: RankProvidersInput): ProviderMatch[
     consents,
   } = input;
 
-  const matches: ProviderMatch[] = [];
+  const establishedMatches: ProviderMatch[] = [];
+  const newMatches: ProviderMatch[] = [];
 
   for (const provider of providers) {
     const hasConsent = consents.some(
@@ -55,104 +56,150 @@ export function rankProvidersForOffer(input: RankProvidersInput): ProviderMatch[
     );
 
     for (const card of providerCards) {
-      // Only match cards from the offer's bank
+      // Mandatory eligibility: Only match cards from the offer's bank
       if (card.bankName.toLowerCase() !== offer.bankName.toLowerCase()) {
         continue;
       }
 
-      // 1. Card / Offer compatibility (35)
-      let compatibilityScore = 25; // bank matches
+      // Mandatory eligibility: Category support
       const supportsCategory =
         provider.supportedOfferCategories.includes('All') ||
         provider.supportedOfferCategories.some(
           (cat) => cat.toLowerCase() === product.category.toLowerCase()
         );
-      if (supportsCategory) compatibilityScore += 5;
-      if (card.isVerifiedDemo) compatibilityScore += 5;
+      if (!supportsCategory) continue;
 
-      // 2. Availability (20)
-      const availabilityScore =
-        provider.availabilityStatus === 'ONLINE'
-          ? 20
-          : provider.availabilityStatus === 'BUSY'
-          ? 10
-          : 0;
-
-      // 3. Transaction capacity (15)
+      // Mandatory eligibility: Transaction capacity
       const hasCapacity = provider.maxTransactionAmount >= cardChargeAmount;
-      const capacityScore = hasCapacity ? 15 : 0;
+      if (!hasCapacity) continue;
 
-      // Skip providers with zero capacity or offline if online ones exist, but include busy for comparison
-      if (!hasCapacity || provider.availabilityStatus === 'OFFLINE') {
-        continue;
+      // Mandatory eligibility: Account status and availability
+      if (provider.availabilityStatus === 'OFFLINE') continue;
+
+      const isNew = Boolean(
+        provider.isNewProvider ||
+        ((!provider.completedOrders || provider.completedOrders === 0) &&
+         (!provider.rating || provider.rating === 0))
+      );
+
+      if (isNew) {
+        // Newly enrolled provider:
+        // Do NOT assign fabricated ratings, completed orders count, response times, or match score.
+        newMatches.push({
+          id: `pm-${transactionId}-${provider.id}-${card.id}`,
+          transactionId,
+          providerId: provider.id,
+          providerAlias: provider.displayAlias,
+          cardMetadataId: card.id,
+          bankName: card.bankName,
+          cardProduct: `${card.bankName} ${card.cardVariant}`,
+          cardCategory: card.cardCategory,
+          maskedLast4: card.maskedLast4,
+          availabilityStatus: provider.availabilityStatus,
+          completedOrders: 0,
+          avgAcceptanceMinutes: undefined,
+          rating: undefined,
+          maxTransactionAmount: provider.maxTransactionAmount,
+          offerId: offer.id,
+          offeredReward: card.rewardPreferenceInr,
+          matchScore: null,
+          isNewProvider: true,
+          aiRationale: `${provider.displayAlias} is a newly enrolled verified cardholder with an active ${card.bankName} ${card.cardVariant} card (${card.cardCategory}), currently ${provider.availabilityStatus.toLowerCase()}, with transaction limit up to ₹${provider.maxTransactionAmount.toLocaleString('en-IN')}.`,
+          isRecommended: false,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        // Established provider: evaluate full deterministic 100-pt scoring
+        let compatibilityScore = 25; // bank matches
+        if (supportsCategory) compatibilityScore += 5;
+        if (card.isVerifiedDemo) compatibilityScore += 5;
+
+        const availabilityScore =
+          provider.availabilityStatus === 'ONLINE'
+            ? 20
+            : provider.availabilityStatus === 'BUSY'
+            ? 10
+            : 0;
+
+        const capacityScore = 15;
+
+        const fulfilmentScore = Math.min(
+          12,
+          Math.round((Math.min(provider.completedOrders ?? 0, 40) / 40) * 12)
+        );
+
+        const responseTimeScore = Math.max(
+          2,
+          Math.min(10, Math.round(11 - (provider.avgAcceptanceMinutes ?? 5)))
+        );
+
+        const ratingScore = Math.round(((provider.rating ?? 4.5) / 5) * 8);
+
+        const totalScore =
+          compatibilityScore +
+          availabilityScore +
+          capacityScore +
+          fulfilmentScore +
+          responseTimeScore +
+          ratingScore;
+
+        const scoreBreakdown: ProviderScoreBreakdown = {
+          compatibilityScore,
+          availabilityScore,
+          capacityScore,
+          fulfilmentScore,
+          responseTimeScore,
+          ratingScore,
+          totalScore,
+        };
+
+        const aiRationale = `${provider.displayAlias} holds an active ${card.bankName} ${card.cardVariant} card (${card.cardCategory}), is currently ${provider.availabilityStatus.toLowerCase()}, supports up to ₹${provider.maxTransactionAmount.toLocaleString('en-IN')}, and has ${provider.completedOrders} completed orders at a ${(provider.rating ?? 5).toFixed(1)}★ rating (~${provider.avgAcceptanceMinutes}m response).`;
+
+        establishedMatches.push({
+          id: `pm-${transactionId}-${provider.id}-${card.id}`,
+          transactionId,
+          providerId: provider.id,
+          providerAlias: provider.displayAlias,
+          cardMetadataId: card.id,
+          bankName: card.bankName,
+          cardProduct: `${card.bankName} ${card.cardVariant}`,
+          cardCategory: card.cardCategory,
+          maskedLast4: card.maskedLast4,
+          availabilityStatus: provider.availabilityStatus,
+          completedOrders: provider.completedOrders ?? 0,
+          avgAcceptanceMinutes: provider.avgAcceptanceMinutes ?? 5,
+          rating: provider.rating ?? 5.0,
+          maxTransactionAmount: provider.maxTransactionAmount,
+          offerId: offer.id,
+          offeredReward: card.rewardPreferenceInr,
+          matchScore: totalScore,
+          scoreBreakdown,
+          isNewProvider: false,
+          aiRationale,
+          isRecommended: false,
+          createdAt: new Date().toISOString(),
+        });
       }
-
-      // 4. Previous successful fulfilment (12)
-      const fulfilmentScore = Math.min(
-        12,
-        Math.round((Math.min(provider.completedOrders, 40) / 40) * 12)
-      );
-
-      // 5. Response time (10)
-      const responseTimeScore = Math.max(
-        2,
-        Math.min(10, Math.round(11 - provider.avgAcceptanceMinutes))
-      );
-
-      // 6. Rating (8)
-      const ratingScore = Math.round((provider.rating / 5) * 8);
-
-      const totalScore =
-        compatibilityScore +
-        availabilityScore +
-        capacityScore +
-        fulfilmentScore +
-        responseTimeScore +
-        ratingScore;
-
-      const scoreBreakdown: ProviderScoreBreakdown = {
-        compatibilityScore,
-        availabilityScore,
-        capacityScore,
-        fulfilmentScore,
-        responseTimeScore,
-        ratingScore,
-        totalScore,
-      };
-
-      const aiRationale = `${provider.displayAlias} holds an active ${card.bankName} ${card.cardVariant} card (${card.cardCategory}), is currently ${provider.availabilityStatus.toLowerCase()}, supports up to ₹${provider.maxTransactionAmount.toLocaleString('en-IN')}, and has ${provider.completedOrders} completed orders at a ${provider.rating.toFixed(1)}★ rating (~${provider.avgAcceptanceMinutes}m response).`;
-
-      matches.push({
-        id: `pm-${transactionId}-${provider.id}-${card.id}`,
-        transactionId,
-        providerId: provider.id,
-        providerAlias: provider.displayAlias,
-        cardMetadataId: card.id,
-        bankName: card.bankName,
-        cardProduct: `${card.bankName} ${card.cardVariant}`,
-        cardCategory: card.cardCategory,
-        maskedLast4: card.maskedLast4,
-        availabilityStatus: provider.availabilityStatus,
-        completedOrders: provider.completedOrders,
-        avgAcceptanceMinutes: provider.avgAcceptanceMinutes,
-        rating: provider.rating,
-        maxTransactionAmount: provider.maxTransactionAmount,
-        offerId: offer.id,
-        offeredReward: card.rewardPreferenceInr,
-        matchScore: totalScore,
-        scoreBreakdown,
-        aiRationale,
-        isRecommended: false,
-        createdAt: new Date().toISOString(),
-      });
     }
   }
 
-  matches.sort((a, b) => b.matchScore - a.matchScore);
+  // Rank established providers by matchScore descending
+  establishedMatches.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
+
+  // Rank new providers by capacity and availability
+  newMatches.sort((a, b) => b.maxTransactionAmount - a.maxTransactionAmount);
+
+  // Combine into unified ordered list: established providers first, then newly added providers
+  const matches = [...establishedMatches, ...newMatches];
+
   matches.forEach((m, idx) => {
     const maskedLabel = `Provider ${String(idx + 1).padStart(2, '0')}`;
     m.providerAlias = maskedLabel;
-    m.aiRationale = `${maskedLabel} holds an active ${m.cardProduct} (${m.cardCategory}), is currently ${m.availabilityStatus.toLowerCase()}, supports up to ₹${m.maxTransactionAmount.toLocaleString('en-IN')}, and has ${m.completedOrders} completed orders at a ${m.rating.toFixed(1)}★ rating (~${m.avgAcceptanceMinutes}m response).`;
+    if (m.isNewProvider) {
+      m.aiRationale = `${maskedLabel} is a newly enrolled verified cardholder with an active ${m.cardProduct} (${m.cardCategory}), currently ${m.availabilityStatus.toLowerCase()}, with transaction limit up to ₹${m.maxTransactionAmount.toLocaleString('en-IN')}.`;
+    } else {
+      m.aiRationale = `${maskedLabel} holds an active ${m.cardProduct} (${m.cardCategory}), is currently ${m.availabilityStatus.toLowerCase()}, supports up to ₹${m.maxTransactionAmount.toLocaleString('en-IN')}, and has ${m.completedOrders} completed orders at a ${(m.rating ?? 5).toFixed(1)}★ rating (~${m.avgAcceptanceMinutes}m response).`;
+    }
     if (idx === 0) {
       m.isRecommended = true;
     }

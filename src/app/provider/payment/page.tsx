@@ -24,7 +24,13 @@ import {
   TransactionStatusBadge,
 } from '@/components/ui/primitives';
 
-type CheckoutStep = 'REVIEW' | 'ISSUER_3DS' | 'SUCCESS' | 'FAILED';
+type CheckoutStep =
+  | 'REVIEW'
+  | 'ISSUER_3DS'
+  | 'MANDATE_SETUP'
+  | 'MANDATE_SIMULATION'
+  | 'SUCCESS'
+  | 'FAILED';
 
 function ProviderPaymentContent() {
   const searchParams = useSearchParams();
@@ -37,25 +43,39 @@ function ProviderPaymentContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function determineStep(proj: RoleProjectedTransaction): CheckoutStep {
+    if (proj.transaction.status === 'CARD_PAYMENT_PENDING') {
+      return 'ISSUER_3DS';
+    } else if (proj.transaction.status === 'PAYMENT_FAILED') {
+      return 'FAILED';
+    } else if (
+      [
+        'CARD_PAYMENT_SUCCESS',
+        'ORDER_CREATED',
+        'SHIPPED',
+        'DELIVERED',
+        'RETURN_WINDOW_ACTIVE',
+        'SETTLEMENT_ELIGIBLE',
+        'SETTLEMENT_COMPLETED',
+      ].includes(proj.transaction.status) ||
+      proj.transaction.cardPaymentStatus === 'SUCCESS'
+    ) {
+      if (proj.providerMandate?.status === 'AUTHORISED') {
+        return 'SUCCESS';
+      }
+      return 'MANDATE_SETUP';
+    } else {
+      return 'REVIEW';
+    }
+  }
+
   async function loadTx(id: string) {
     const res = await fetch(`/api/transactions/${id}`);
     const data = await res.json();
     if (data.data) {
       const proj: RoleProjectedTransaction = data.data;
       setDetail(proj);
-      if (proj.transaction.status === 'CARD_PAYMENT_PENDING') {
-        setStep('ISSUER_3DS');
-      } else if (
-        ['CARD_PAYMENT_SUCCESS', 'ORDER_CREATED', 'SHIPPED', 'DELIVERED', 'SETTLEMENT_COMPLETED'].includes(
-          proj.transaction.status
-        )
-      ) {
-        setStep('SUCCESS');
-      } else if (proj.transaction.status === 'PAYMENT_FAILED') {
-        setStep('FAILED');
-      } else {
-        setStep('REVIEW');
-      }
+      setStep(determineStep(proj));
     }
   }
 
@@ -70,9 +90,13 @@ function ProviderPaymentContent() {
         const pick =
           txIdParam ||
           list.find((t) =>
-            ['MANDATE_AUTHORISED', 'CARD_PAYMENT_PENDING', 'PAYMENT_FAILED'].includes(
-              t.transaction.status
-            )
+            [
+              'MANDATE_AUTHORISED',
+              'CARD_PAYMENT_PENDING',
+              'CARD_PAYMENT_SUCCESS',
+              'ORDER_CREATED',
+              'PAYMENT_FAILED',
+            ].includes(t.transaction.status)
           )?.transaction.id ||
           list[0]?.transaction.id ||
           '';
@@ -83,19 +107,7 @@ function ProviderPaymentContent() {
           if (!active || !txData.data) return;
           const proj: RoleProjectedTransaction = txData.data;
           setDetail(proj);
-          if (proj.transaction.status === 'CARD_PAYMENT_PENDING') {
-            setStep('ISSUER_3DS');
-          } else if (
-            ['CARD_PAYMENT_SUCCESS', 'ORDER_CREATED', 'SHIPPED', 'DELIVERED', 'SETTLEMENT_COMPLETED'].includes(
-              proj.transaction.status
-            )
-          ) {
-            setStep('SUCCESS');
-          } else if (proj.transaction.status === 'PAYMENT_FAILED') {
-            setStep('FAILED');
-          } else {
-            setStep('REVIEW');
-          }
+          setStep(determineStep(proj));
         }
       });
     return () => {
@@ -143,9 +155,43 @@ function ProviderPaymentContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Callback verification failed');
       setDetail(data.data);
-      setStep(outcome === 'SUCCESS' ? 'SUCCESS' : 'FAILED');
+      if (outcome === 'SUCCESS') {
+        // Successful payment automatically moves to mandatory Provider Refund Protection Mandate setup
+        setStep('MANDATE_SETUP');
+      } else {
+        setStep('FAILED');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Payment confirmation failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleMandateAction(action: 'APPROVE' | 'CANCEL' | 'RETRY') {
+    if (!detail) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch('/api/provider/mandate/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: detail.transaction.id,
+          action,
+          simulatedPinConfirmed: action === 'APPROVE',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Mandate action failed');
+      setDetail(data.data);
+      if (action === 'APPROVE') {
+        setStep('SUCCESS');
+      } else {
+        setStep('MANDATE_SETUP');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Mandate action failed');
     } finally {
       setBusy(false);
     }
@@ -350,7 +396,202 @@ function ProviderPaymentContent() {
               </Card>
             )}
 
-            {/* Step 3: Payment Successful + Automatic Merchant Order Confirmation */}
+            {/* Step 3: Mandatory Provider Refund Protection Mandate Setup */}
+            {step === 'MANDATE_SETUP' && (
+              <Card className="border-2 border-[#002970] overflow-hidden shadow-lg">
+                <CardHeader className="bg-[#002970] text-white flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="text-[11px] font-bold bg-[#00BAF2] text-[#002970] px-2.5 py-0.5 rounded-full uppercase">
+                      Mandatory Step 2 of 2
+                    </span>
+                    <h2 className="text-xl font-extrabold pt-1">
+                      Provider Refund Protection Mandate
+                    </h2>
+                  </div>
+                  <Badge variant="amber">
+                    Settlement Status: {detail.transaction.settlementStatus ?? 'BLOCKED_MANDATE_PENDING'}
+                  </Badge>
+                </CardHeader>
+
+                <CardContent className="space-y-5 pt-5">
+                  {/* Explanation box verbatim as specified */}
+                  <div className="rounded-2xl bg-sky-50 border border-sky-200 p-4 text-xs text-[#002970] leading-relaxed space-y-2">
+                    <p className="font-bold text-sm text-[#002970] flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-[#00BAF2]" />
+                      Why This Mandate Is Required
+                    </p>
+                    <p>
+                      To protect shoppers against cancellations and product returns, PerkLink requires a refund protection mandate from card providers.
+                    </p>
+                    <p>
+                      In case the merchant refunds the purchase amount directly to your credit card following a shopper cancellation or return, PerkLink may recover the corresponding refunded amount through your authorised mandate and process the shopper&apos;s refund.
+                    </p>
+                    <p className="font-semibold text-rose-800">
+                      Your settlement will remain blocked until this mandate is successfully authorised.
+                    </p>
+                  </div>
+
+                  {/* Mandatory Details Grid */}
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2.5 text-xs tabular-nums">
+                    <div className="flex justify-between border-b border-slate-200/80 pb-2">
+                      <span className="text-slate-500">Purchase Request ID</span>
+                      <strong className="font-mono text-slate-800">
+                        {detail.purchaseRequest?.id ?? detail.providerMandate?.purchaseRequestId ?? `req-${detail.transaction.id}`}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200/80 pb-2">
+                      <span className="text-slate-500">Transaction ID</span>
+                      <strong className="font-mono text-[#002970]">{detail.transaction.id}</strong>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200/80 pb-2">
+                      <span className="text-slate-500">Product Name</span>
+                      <strong className="text-slate-900">{detail.product.title}</strong>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200/80 pb-2">
+                      <span className="text-slate-500">Merchant Name</span>
+                      <strong className="text-slate-900">{detail.product.merchant}</strong>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200/80 pb-2">
+                      <span className="text-slate-500">Original Card Transaction Amount</span>
+                      <strong className="text-slate-900">
+                        {formatInr(detail.transaction.cardChargeAmount)}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200/80 pb-2 text-sm bg-sky-100/60 p-2 rounded-lg">
+                      <span className="font-bold text-[#002970]">
+                        Maximum Authorised Recovery Amount
+                      </span>
+                      <strong className="font-black text-[#002970] text-base">
+                        {formatInr(detail.providerMandate?.maxAmount ?? detail.transaction.cardChargeAmount)}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200/80 pb-2">
+                      <span className="text-slate-500">Mandate Purpose</span>
+                      <strong className="text-slate-800 text-right max-w-xs">
+                        {detail.providerMandate?.purpose ?? 'PerkLink Return & Cancellation Protection for Merchant Card Refunds'}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-200/80 pb-2">
+                      <span className="text-slate-500">Mandate Status</span>
+                      <Badge variant={detail.providerMandate?.status === 'AUTHORISED' ? 'green' : 'amber'}>
+                        {detail.providerMandate?.status ?? 'PENDING'}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Applicable Validity / Return-Protection Period</span>
+                      <strong className="text-slate-800">30 Days (Standard Merchant Return Window)</strong>
+                    </div>
+                  </div>
+
+                  {/* Settlement Status disclosure banner */}
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Settlement Status: BLOCKED_MANDATE_PENDING.</strong>
+                      <p className="mt-0.5">
+                        Your reimbursement and reward payout ({formatInr(detail.transaction.cardChargeAmount + detail.transaction.providerReward)}) remains on hold until you authorise this refund protection mandate.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Mandatory action */}
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      size="lg"
+                      variant="paytm"
+                      disabled={busy}
+                      onClick={() => setStep('MANDATE_SIMULATION')}
+                    >
+                      <ShieldCheck className="h-4 w-4 mr-1.5" />
+                      Set Up Refund Protection Mandate
+                      <ArrowRight className="h-4 w-4 ml-1.5" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Step 4: Realistic UPI Mandate Authorisation Simulation */}
+            {step === 'MANDATE_SIMULATION' && (
+              <Card className="max-w-lg mx-auto overflow-hidden border-2 border-[#00BAF2] shadow-xl">
+                <div className="bg-gradient-to-r from-[#002970] to-[#0055b8] text-white p-5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold bg-[#00BAF2] text-[#002970] px-2.5 py-0.5 rounded-full">
+                      UPI MANDATE SIMULATION
+                    </span>
+                    <Lock className="h-4 w-4 text-sky-200" />
+                  </div>
+                  <h2 className="text-lg font-extrabold pt-1">
+                    Simulated UPI Autopay / Mandate Authorisation
+                  </h2>
+                  <p className="text-xs text-sky-100">
+                    Ref: {detail.providerMandate?.mandateRef ?? `PLK-PROV-MAND-${detail.transaction.id}`}
+                  </p>
+                </div>
+
+                <CardContent className="space-y-4 pt-4">
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2 text-xs tabular-nums">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Beneficiary</span>
+                      <strong className="text-slate-900">Paytm PerkLink Escrow Pool</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Provider Account</span>
+                      <strong className="text-slate-900">
+                        {detail.providerProfile?.displayAlias ?? 'Verified Card Provider'}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Mandate Reference</span>
+                      <strong className="font-mono text-[#002970]">
+                        {detail.providerMandate?.mandateRef ?? `PLK-PROV-MAND-${detail.transaction.id}`}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Max Recovery Amount Limit</span>
+                      <strong className="text-base text-[#002970]">
+                        {formatInr(detail.providerMandate?.maxAmount ?? detail.transaction.cardChargeAmount)}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Mandate Purpose</span>
+                      <strong className="text-slate-700 text-right max-w-[240px]">
+                        Return &amp; Cancellation Protection for Merchant Card Refunds
+                      </strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Validity Period</span>
+                      <strong className="text-slate-800">30 Days</strong>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 font-semibold text-center">
+                    DEMO ONLY — This is a simulated mandate authorisation. No real UPI PIN or bank credentials are required.
+                  </div>
+
+                  <div className="flex gap-3 pt-1">
+                    <Button
+                      variant="outline"
+                      className="flex-1 text-slate-700"
+                      disabled={busy}
+                      onClick={() => handleMandateAction('CANCEL')}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="paytm"
+                      className="flex-1"
+                      disabled={busy}
+                      onClick={() => handleMandateAction('APPROVE')}
+                    >
+                      {busy ? 'Authorising...' : 'Approve Mandate'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Step 5: Payment & Mandate Successful + Settlement Hold & Merchant Order */}
             {step === 'SUCCESS' && (
               <div className="space-y-4">
                 <Card className="border-2 border-emerald-300 overflow-hidden">
@@ -358,18 +599,18 @@ function ProviderPaymentContent() {
                     <div className="flex items-center gap-3">
                       <CheckCircle2 className="h-10 w-10 shrink-0" />
                       <div>
-                        <h2 className="text-2xl font-extrabold">Payment Successful</h2>
+                        <h2 className="text-2xl font-extrabold">Payment &amp; Protection Mandate Complete</h2>
                         <p className="text-xs text-emerald-50">
-                          Simulated gateway callback verified server-side &amp; Merchant Order triggered automatically.
+                          Simulated gateway callback verified &amp; Provider Refund Protection Mandate successfully authorised.
                         </p>
                       </div>
                     </div>
                     <Badge variant="default" className="bg-white text-emerald-800 border-0">
-                      Callback Verified
+                      Mandate Authorised ✓
                     </Badge>
                   </div>
 
-                  <CardContent className="grid md:grid-cols-2 gap-4 text-xs">
+                  <CardContent className="grid md:grid-cols-2 gap-4 text-xs pt-4">
                     <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-1.5">
                       <p className="font-bold text-[#002970] text-sm">
                         Simulated Payment Receipt
@@ -394,8 +635,91 @@ function ProviderPaymentContent() {
                       </p>
                     </div>
 
+                    {/* Refund Protection Mandate Card */}
+                    <div className="rounded-xl bg-sky-50 border border-sky-200 p-4 space-y-1.5">
+                      <p className="font-bold text-[#002970] text-sm flex items-center justify-between">
+                        <span>Refund Protection Mandate</span>
+                        <Badge variant="green" className="text-[10px]">
+                          {detail.providerMandate?.status ?? 'AUTHORISED'}
+                        </Badge>
+                      </p>
+                      <p>
+                        <span className="text-slate-500">Mandate Reference:</span>{' '}
+                        <strong className="font-mono text-[#002970]">
+                          {detail.providerMandate?.mandateRef ?? `PLK-PROV-MAND-${detail.transaction.id}`}
+                        </strong>
+                      </p>
+                      <p>
+                        <span className="text-slate-500">Maximum Recovery Cap:</span>{' '}
+                        <strong className="tabular-nums">
+                          {formatInr(detail.providerMandate?.maxAmount ?? detail.transaction.cardChargeAmount)}
+                        </strong>
+                      </p>
+                      <p>
+                        <span className="text-slate-500">Associated Purchase Request:</span>{' '}
+                        <strong className="font-mono">
+                          {detail.purchaseRequest?.id ?? detail.providerMandate?.purchaseRequestId}
+                        </strong>
+                      </p>
+                      <p>
+                        <span className="text-slate-500">Validity Period:</span>{' '}
+                        <strong>30 Days (Return Protection Window)</strong>
+                      </p>
+                    </div>
+
+                    {/* Mandatory Settlement Status Card */}
+                    <div className="md:col-span-2 rounded-xl bg-blue-50/80 border border-blue-200 p-4 space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-bold text-[#002970] text-sm flex items-center gap-1.5">
+                          <Lock className="h-4 w-4 text-[#002970]" />
+                          Settlement Status: {detail.transaction.settlementStatus ?? 'MANDATE_AUTHORISED_SETTLEMENT_HELD'}
+                        </p>
+                        <Badge variant="navy">Escrow Held</Badge>
+                      </div>
+                      <p className="text-slate-600 text-xs">
+                        • Mandate authorised successfully. Payout of <strong>{formatInr(detail.transaction.cardChargeAmount + detail.transaction.providerReward)}</strong> (₹{detail.transaction.cardChargeAmount.toLocaleString('en-IN')} card charge reimbursement + ₹{detail.transaction.providerReward.toLocaleString('en-IN')} reward) remains held in Paytm PerkLink escrow until delivery confirmation and return window expiration.
+                      </p>
+                      <p className="text-slate-600 text-xs">
+                        • In the event of a merchant return or cancellation, any refund credited to your card will be recovered via this mandate and returned to the shopper.
+                      </p>
+                    </div>
+
+                    {/* Return & Recovery Details (if return requested) */}
+                    {detail.transaction.merchantRefundStatus && detail.transaction.merchantRefundStatus !== 'NONE' && (
+                      <div className="md:col-span-2 rounded-xl bg-amber-50 border border-amber-300 p-4 space-y-2 text-xs">
+                        <p className="font-bold text-amber-900 text-sm flex items-center gap-1.5">
+                          <AlertTriangle className="h-4 w-4 text-amber-700" />
+                          Shopper Return / Refund Protection Journey
+                        </p>
+                        <div className="grid sm:grid-cols-4 gap-2 text-center pt-1">
+                          <div className="rounded-lg bg-white border border-amber-200 p-2">
+                            <span className="text-[10px] text-slate-500 block">Return Status</span>
+                            <strong className="text-[#002970]">{detail.transaction.merchantRefundStatus}</strong>
+                          </div>
+                          <div className="rounded-lg bg-white border border-amber-200 p-2">
+                            <span className="text-[10px] text-slate-500 block">Merchant Refund</span>
+                            <strong className="text-slate-900">
+                              {detail.refundRecovery ? formatInr(detail.refundRecovery.confirmedMerchantRefundAmount) : 'Pending Confirmation'}
+                            </strong>
+                          </div>
+                          <div className="rounded-lg bg-white border border-amber-200 p-2">
+                            <span className="text-[10px] text-slate-500 block">Recovery Status</span>
+                            <strong className="text-[#00B86B]">
+                              {detail.transaction.recoveryStatus ?? 'NONE'}
+                            </strong>
+                          </div>
+                          <div className="rounded-lg bg-white border border-amber-200 p-2">
+                            <span className="text-[10px] text-slate-500 block">Shopper Refund</span>
+                            <strong className="text-[#002970]">
+                              {detail.transaction.shopperRefundStatus ?? 'NONE'}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {detail.merchantOrder && (
-                      <div className="rounded-xl bg-sky-50 border border-sky-200 p-4 space-y-1.5">
+                      <div className="md:col-span-2 rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-1.5">
                         <p className="font-bold text-[#002970] text-sm">
                           Simulated Merchant Checkout Confirmation
                         </p>
@@ -424,7 +748,7 @@ function ProviderPaymentContent() {
 
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white border border-slate-200 p-4 text-xs text-slate-600">
                   <span>
-                    <strong>Normal Flow Complete for Class A!</strong> Invoice upload is optional and only needed if an order mismatch occurs. Next: Switch to <strong>Paytm Ops Admin</strong> to advance delivery &amp; simulate settlement.
+                    <strong>Flow Complete for Class A!</strong> Mandatory Refund Protection Mandate is active. Payout remains held pending delivery and return-period completion. Next: Switch to <strong>Paytm Ops Admin</strong> to manage order delivery &amp; settlement.
                   </span>
                   <Link href={`/provider/upload-invoice?txId=${detail.transaction.id}`}>
                     <Button variant="outline" size="sm">

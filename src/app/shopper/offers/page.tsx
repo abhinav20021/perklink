@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
+  UserPlus,
 } from 'lucide-react';
 import type { RoleProjectedTransaction } from '@/lib/db/types';
 import { formatInr } from '@/lib/utils';
@@ -191,6 +192,9 @@ function OffersContent() {
       (p) => `${p.providerId}::${p.cardMetadataId}` === selectedProviderKey
     ) ?? detail?.providerMatches[0];
 
+  const recommendedProviders = (detail?.providerMatches || []).filter((p) => !p.isNewProvider);
+  const newlyAddedProviders = (detail?.providerMatches || []).filter((p) => p.isNewProvider);
+
   return (
     <AppShell requiredRole="SHOPPER_B">
       <div className="space-y-6">
@@ -306,12 +310,18 @@ function OffersContent() {
                   <CardHeader className="bg-sky-50 flex items-center justify-between rounded-t-2xl">
                     <span className="font-bold text-sm text-[#002970] flex items-center gap-1.5">
                       <Bot className="h-4 w-4 text-[#00BAF2]" />
-                      {topProvider ? `${topProvider.providerAlias} Spotlight (Transparent Score)` : 'Card Provider Spotlight'}
+                      {topProvider ? `${topProvider.providerAlias} Spotlight` : 'Card Provider Spotlight'}
                     </span>
                     {topProvider && (
-                      <Badge variant="navy">
-                        Match Score: {topProvider.matchScore}/100
-                      </Badge>
+                      topProvider.isNewProvider ? (
+                        <Badge variant="blue" className="bg-[#002970] text-white font-bold text-xs border-0">
+                          NEW PROVIDER
+                        </Badge>
+                      ) : (
+                        <Badge variant="green" className="font-extrabold text-xs text-emerald-800 bg-emerald-100 border border-emerald-300">
+                          {topProvider.matchScore}% Match
+                        </Badge>
+                      )
                     )}
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -324,8 +334,13 @@ function OffersContent() {
                                 {topProvider.providerAlias}
                               </h3>
                               <Badge variant="green">{topProvider.availabilityStatus}</Badge>
+                              {topProvider.isNewProvider && (
+                                <Badge variant="blue" className="text-[10px] bg-sky-100 text-[#002970] border-sky-300 font-bold">
+                                  NEW PROVIDER
+                                </Badge>
+                              )}
                             </div>
-                            <p className="text-sm text-slate-600">
+                            <p className="text-sm text-slate-600 mt-0.5">
                               {topProvider.cardProduct} (•••• {topProvider.maskedLast4}) •{' '}
                               <span className="font-semibold text-[#002970]">
                                 Reward {formatInr(topProvider.offeredReward)}
@@ -336,21 +351,29 @@ function OffersContent() {
                           <div className="flex items-center gap-4 text-xs">
                             <div className="text-center">
                               <span className="text-slate-400 block">Rating</span>
-                              <strong className="text-slate-900 flex items-center gap-0.5">
-                                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                                {topProvider.rating.toFixed(1)}
-                              </strong>
+                              {topProvider.isNewProvider || !topProvider.rating ? (
+                                <span className="text-slate-500 font-medium text-[11px]">No ratings yet</span>
+                              ) : (
+                                <strong className="text-slate-900 flex items-center gap-0.5">
+                                  <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                                  {topProvider.rating.toFixed(1)}
+                                </strong>
+                              )}
                             </div>
                             <div className="text-center">
                               <span className="text-slate-400 block">Fulfilled</span>
-                              <strong className="text-slate-900">
-                                {topProvider.completedOrders} orders
-                              </strong>
+                              {topProvider.isNewProvider || !topProvider.completedOrders ? (
+                                <span className="text-slate-500 font-medium text-[11px]">No history yet</span>
+                              ) : (
+                                <strong className="text-slate-900">
+                                  {topProvider.completedOrders} orders
+                                </strong>
+                              )}
                             </div>
                             <div className="text-center">
-                              <span className="text-slate-400 block">Response</span>
-                              <strong className="text-slate-900">
-                                ~{topProvider.avgAcceptanceMinutes}m
+                              <span className="text-slate-400 block">Capacity</span>
+                              <strong className="text-[#002970]">
+                                {formatInr(topProvider.maxTransactionAmount)}
                               </strong>
                             </div>
                           </div>
@@ -358,36 +381,22 @@ function OffersContent() {
 
                         <div className="rounded-2xl bg-sky-50/80 border border-sky-200 p-3.5 text-sm text-[#002970]">
                           <p className="text-xs font-bold uppercase tracking-wider text-sky-700 mb-1">
-                            Why This Provider Was Selected (AI Explanation)
+                            {topProvider.isNewProvider ? 'New Provider Profile & Match Status' : 'Why This Provider Was Selected (AI Explanation)'}
                           </p>
                           <p>
                             {topProvider.aiRationale ||
                               detail.transaction.aiRecommendationExplanation}
                           </p>
+                          {topProvider.isNewProvider && (
+                            <p className="text-xs text-slate-500 mt-2 font-medium">
+                              New Provider — Match score not yet available. Fully eligible with verified card compatibility and transaction capacity.
+                            </p>
+                          )}
                           {aiAlternativeText && (
                             <p className="text-xs text-slate-600 mt-2">
                               {aiAlternativeText}
                             </p>
                           )}
-                        </div>
-
-                        {/* Transparent Score Breakdown */}
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-[11px]">
-                          {[
-                            ['Card Match', topProvider.scoreBreakdown.compatibilityScore, 35],
-                            ['Availability', topProvider.scoreBreakdown.availabilityScore, 20],
-                            ['Capacity', topProvider.scoreBreakdown.capacityScore, 15],
-                            ['History', topProvider.scoreBreakdown.fulfilmentScore, 12],
-                            ['Speed', topProvider.scoreBreakdown.responseTimeScore, 10],
-                            ['Rating', topProvider.scoreBreakdown.ratingScore, 8],
-                          ].map(([lbl, val, max]) => (
-                            <div key={String(lbl)} className="rounded-xl bg-slate-50 border border-slate-200 p-2">
-                              <span className="text-slate-500 block">{lbl}</span>
-                              <strong className="text-[#002970] tabular-nums">
-                                {val}/{max}
-                              </strong>
-                            </div>
-                          ))}
                         </div>
                       </>
                     ) : (
@@ -400,129 +409,239 @@ function OffersContent() {
               </div>
             )}
 
-            {/* Matched Card Providers Grid (All Providers for Selected Offer) */}
+            {/* Matched Card Providers (Two Groups: Recommended & Newly Added) */}
             {detail.providerMatches.length > 0 && activeComparison && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-lg font-extrabold text-[#002970] flex items-center gap-2">
-                      <span>Available Card Providers for {activeComparison.bankName}</span>
-                      <Badge variant="navy">{detail.providerMatches.length} Verified Cardholders</Badge>
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Class A providers holding registered {activeComparison.bankName} credit cards matching this purchase. Identities masked to protect user privacy.
-                    </p>
-                  </div>
-                </div>
+              <div className="space-y-6">
+                {/* Group 1 — Recommended Providers */}
+                {recommendedProviders.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-lg font-extrabold text-[#002970] flex items-center gap-2">
+                          <span>Recommended Providers for {activeComparison.bankName}</span>
+                          <Badge variant="navy">{recommendedProviders.length} Established</Badge>
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Established Class A cardholders with verified transaction history and AI match rankings.
+                        </p>
+                      </div>
+                    </div>
 
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {detail.providerMatches.map((pm) => {
-                    const key = `${pm.providerId}::${pm.cardMetadataId}`;
-                    const isSelected = key === selectedProviderKey || (!selectedProviderKey && pm.isRecommended);
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {recommendedProviders.map((pm) => {
+                        const key = `${pm.providerId}::${pm.cardMetadataId}`;
+                        const isSelected = key === selectedProviderKey || (!selectedProviderKey && pm.isRecommended);
 
-                    return (
-                      <Card
-                        key={pm.id}
-                        onClick={() => setSelectedProviderKey(key)}
-                        className={`cursor-pointer transition-all duration-200 border-2 rounded-2xl ${
-                          isSelected
-                            ? 'border-[#002970] bg-sky-50/40 shadow-md ring-2 ring-[#002970]/15'
-                            : 'border-slate-200 bg-white hover:border-[#00BAF2] hover:shadow-sm'
-                        }`}
-                      >
-                        <CardContent className="p-4 space-y-3.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-base text-[#002970]">
-                                {pm.providerAlias}
-                              </span>
-                              <Badge variant="green" className="text-[10px] px-2 py-0.5">
-                                {pm.availabilityStatus}
-                              </Badge>
-                            </div>
-                            {pm.isRecommended ? (
-                              <Badge variant="blue" className="text-[10px] px-2 py-0.5 font-bold">
-                                <Sparkles className="h-3 w-3 mr-1" />
-                                AI Top Pick
-                              </Badge>
-                            ) : (
-                              <Badge variant="navy" className="text-[10px] px-2 py-0.5 font-bold">
-                                Score {pm.matchScore}
-                              </Badge>
-                            )}
-                          </div>
-
-                          {/* Bank & Card Details */}
-                          <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-2.5 space-y-0.5">
-                            <p className="text-xs font-bold text-slate-900 flex items-center justify-between">
-                              <span>{pm.cardProduct}</span>
-                              <span className="text-[11px] font-mono text-slate-500">•••• {pm.maskedLast4}</span>
-                            </p>
-                            <p className="text-[11px] text-slate-500">
-                              {pm.bankName} • {pm.cardCategory} Tier
-                            </p>
-                          </div>
-
-                          {/* 6 Key Match Metrics */}
-                          <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
-                              <span className="text-[10px] text-slate-500 block">Match Score</span>
-                              <strong className="text-[#002970] font-bold">{pm.matchScore}/100</strong>
-                            </div>
-                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
-                              <span className="text-[10px] text-slate-500 block">Rating</span>
-                              <strong className="text-slate-900 font-bold flex items-center justify-center gap-0.5">
-                                <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
-                                {pm.rating.toFixed(1)}
-                              </strong>
-                            </div>
-                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
-                              <span className="text-[10px] text-slate-500 block">Fulfilled</span>
-                              <strong className="text-slate-900 font-bold">{pm.completedOrders} orders</strong>
-                            </div>
-                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
-                              <span className="text-[10px] text-slate-500 block">Response</span>
-                              <strong className="text-slate-900 font-bold">~{pm.avgAcceptanceMinutes}m</strong>
-                            </div>
-                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
-                              <span className="text-[10px] text-slate-500 block">Max Limit</span>
-                              <strong className="text-slate-900 font-bold">{formatInr(pm.maxTransactionAmount)}</strong>
-                            </div>
-                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
-                              <span className="text-[10px] text-slate-500 block">Reward</span>
-                              <strong className="text-[#00B86B] font-bold">{formatInr(pm.offeredReward)}</strong>
-                            </div>
-                          </div>
-
-                          {/* Select Provider Action Button */}
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isSelected ? 'primary' : 'outline'}
-                            className={`w-full font-semibold transition ${
+                        return (
+                          <Card
+                            key={pm.id}
+                            onClick={() => setSelectedProviderKey(key)}
+                            className={`cursor-pointer transition-all duration-200 border-2 rounded-2xl ${
                               isSelected
-                                ? 'bg-[#002970] text-white hover:bg-[#001f54]'
-                                : 'text-[#002970] border-slate-300 hover:border-[#002970] hover:bg-sky-50'
+                                ? 'border-[#002970] bg-sky-50/40 shadow-md ring-2 ring-[#002970]/15'
+                                : 'border-slate-200 bg-white hover:border-[#00BAF2] hover:shadow-sm'
                             }`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedProviderKey(key);
-                            }}
                           >
-                            {isSelected ? (
-                              <span className="flex items-center justify-center gap-1.5">
-                                <CheckCircle2 className="h-4 w-4 text-[#00BAF2]" />
-                                Selected Provider ✓
-                              </span>
-                            ) : (
-                              'Select Provider'
-                            )}
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
+                            <CardContent className="p-4 space-y-3.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-extrabold text-base text-[#002970]">
+                                    {pm.providerAlias}
+                                  </span>
+                                  <Badge variant="green" className="text-[10px] px-2 py-0.5">
+                                    {pm.availabilityStatus}
+                                  </Badge>
+                                </div>
+                                <Badge variant="green" className="text-[11px] px-2.5 py-0.5 font-bold shadow-sm">
+                                  {pm.isRecommended && <Sparkles className="h-3 w-3 mr-1 inline" />}
+                                  {pm.matchScore}% Match
+                                </Badge>
+                              </div>
+
+                              {/* Bank & Card Details */}
+                              <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-2.5 space-y-0.5">
+                                <p className="text-xs font-bold text-slate-900 flex items-center justify-between">
+                                  <span>{pm.cardProduct}</span>
+                                  <span className="text-[11px] font-mono text-slate-500">•••• {pm.maskedLast4}</span>
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  {pm.bankName} • {pm.cardCategory} Tier
+                                </p>
+                              </div>
+
+                              {/* Consolidated Key Metrics (No scoring breakdown criteria) */}
+                              <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                                <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                                  <span className="text-[10px] text-slate-500 block">Rating</span>
+                                  <strong className="text-slate-900 font-bold flex items-center justify-center gap-0.5">
+                                    <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
+                                    {pm.rating ? pm.rating.toFixed(1) : '5.0'}
+                                  </strong>
+                                </div>
+                                <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                                  <span className="text-[10px] text-slate-500 block">Fulfilled</span>
+                                  <strong className="text-slate-900 font-bold">{pm.completedOrders ?? 0} orders</strong>
+                                </div>
+                                <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                                  <span className="text-[10px] text-slate-500 block">Max Limit</span>
+                                  <strong className="text-slate-900 font-bold">{formatInr(pm.maxTransactionAmount)}</strong>
+                                </div>
+                                <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                                  <span className="text-[10px] text-slate-500 block">Reward</span>
+                                  <strong className="text-[#00B86B] font-bold">{formatInr(pm.offeredReward)}</strong>
+                                </div>
+                              </div>
+
+                              {/* Select Provider Action Button */}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={isSelected ? 'primary' : 'outline'}
+                                className={`w-full font-semibold transition ${
+                                  isSelected
+                                    ? 'bg-[#002970] text-white hover:bg-[#001f54]'
+                                    : 'text-[#002970] border-slate-300 hover:border-[#002970] hover:bg-sky-50'
+                                }`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProviderKey(key);
+                                }}
+                              >
+                                {isSelected ? (
+                                  <span className="flex items-center justify-center gap-1.5">
+                                    <CheckCircle2 className="h-4 w-4 text-[#00BAF2]" />
+                                    Selected Provider ✓
+                                  </span>
+                                ) : (
+                                  'Select Provider'
+                                )}
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Group 2 — Newly Added Providers */}
+                {newlyAddedProviders.length > 0 && (
+                  <div className="space-y-4 pt-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-lg font-extrabold text-[#002970] flex items-center gap-2">
+                          <span>Newly Added Providers for {activeComparison.bankName}</span>
+                          <Badge variant="blue" className="bg-[#00BAF2]/20 text-[#002970] border border-[#00BAF2]/40 font-bold">
+                            <UserPlus className="h-3.5 w-3.5 mr-1 text-[#00BAF2]" />
+                            {newlyAddedProviders.length} Recently Enrolled
+                          </Badge>
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Newly enrolled cardholders with verified card compatibility and full transaction capacity. Not yet rated.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {newlyAddedProviders.map((pm) => {
+                        const key = `${pm.providerId}::${pm.cardMetadataId}`;
+                        const isSelected = key === selectedProviderKey || (!selectedProviderKey && pm.isRecommended);
+
+                        return (
+                          <Card
+                            key={pm.id}
+                            onClick={() => setSelectedProviderKey(key)}
+                            className={`cursor-pointer transition-all duration-200 border-2 rounded-2xl ${
+                              isSelected
+                                ? 'border-[#002970] bg-sky-50/40 shadow-md ring-2 ring-[#002970]/15'
+                                : 'border-slate-200 bg-white hover:border-[#00BAF2] hover:shadow-sm'
+                            }`}
+                          >
+                            <CardContent className="p-4 space-y-3.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-extrabold text-base text-[#002970]">
+                                    {pm.providerAlias}
+                                  </span>
+                                  <Badge variant="green" className="text-[10px] px-2 py-0.5">
+                                    {pm.availabilityStatus}
+                                  </Badge>
+                                </div>
+                                <Badge variant="blue" className="text-[10px] px-2.5 py-0.5 font-black uppercase tracking-wider bg-[#00BAF2]/15 text-[#002970] border border-[#00BAF2]/40">
+                                  <UserPlus className="h-3 w-3 mr-1 text-[#00BAF2]" />
+                                  NEW PROVIDER
+                                </Badge>
+                              </div>
+
+                              {/* Bank & Card Details */}
+                              <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-2.5 space-y-0.5">
+                                <p className="text-xs font-bold text-slate-900 flex items-center justify-between">
+                                  <span>{pm.cardProduct}</span>
+                                  <span className="text-[11px] font-mono text-slate-500">•••• {pm.maskedLast4}</span>
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  {pm.bankName} • {pm.cardCategory} Tier
+                                </p>
+                              </div>
+
+                              {/* Honest Neutral Metrics — No fabricated scores */}
+                              <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                                <div className="rounded-lg bg-slate-50/80 border border-slate-200 p-2">
+                                  <span className="text-[10px] text-slate-400 block font-medium">Ratings</span>
+                                  <span className="text-slate-600 font-semibold text-xs">No ratings yet</span>
+                                </div>
+                                <div className="rounded-lg bg-slate-50/80 border border-slate-200 p-2">
+                                  <span className="text-[10px] text-slate-400 block font-medium">History</span>
+                                  <span className="text-slate-600 font-semibold text-xs">No transaction history yet</span>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                                <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                                  <span className="text-[10px] text-slate-500 block">Max Limit</span>
+                                  <strong className="text-slate-900 font-bold">{formatInr(pm.maxTransactionAmount)}</strong>
+                                </div>
+                                <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                                  <span className="text-[10px] text-slate-500 block">Reward</span>
+                                  <strong className="text-[#00B86B] font-bold">{formatInr(pm.offeredReward)}</strong>
+                                </div>
+                              </div>
+
+                              <p className="text-[11px] text-slate-500 text-center italic">
+                                New Provider — Match score not yet available
+                              </p>
+
+                              {/* Select Provider Action Button */}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={isSelected ? 'primary' : 'outline'}
+                                className={`w-full font-semibold transition ${
+                                  isSelected
+                                    ? 'bg-[#002970] text-white hover:bg-[#001f54]'
+                                    : 'text-[#002970] border-slate-300 hover:border-[#002970] hover:bg-sky-50'
+                                }`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProviderKey(key);
+                                }}
+                              >
+                                {isSelected ? (
+                                  <span className="flex items-center justify-center gap-1.5">
+                                    <CheckCircle2 className="h-4 w-4 text-[#00BAF2]" />
+                                    Selected Provider ✓
+                                  </span>
+                                ) : (
+                                  'Select Provider'
+                                )}
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

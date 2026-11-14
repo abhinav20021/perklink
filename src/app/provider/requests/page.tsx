@@ -222,6 +222,13 @@ export default function ProviderRequestsPage() {
                             {busyId === req.id ? 'Processing...' : 'Accept Request'}
                           </Button>
                         </div>
+                      ) : txProj.transaction.cardPaymentStatus === 'SUCCESS' && txProj.transaction.providerMandateStatus !== 'AUTHORISED' ? (
+                        <Link href={`/provider/payment?txId=${txProj.transaction.id}`}>
+                          <Button variant="paytm" size="sm">
+                            Complete Refund Mandate
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Button>
+                        </Link>
                       ) : txProj.transaction.status === 'MANDATE_AUTHORISED' ? (
                         <Link href={`/provider/payment?txId=${txProj.transaction.id}`}>
                           <Button variant="primary" size="sm">

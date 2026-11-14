@@ -55,6 +55,9 @@ export async function POST(req: Request) {
           payload.failureReason ??
           'Simulated issuer 3DS authentication declined.';
         tx.status = 'PAYMENT_FAILED';
+        tx.cardPaymentStatus = 'FAILED';
+        tx.providerMandateStatus = 'NOT_CREATED';
+        tx.settlementStatus = 'BLOCKED_PAYMENT_PENDING';
         tx.updatedAt = nowIso;
 
         db.auditLogs.push({
@@ -83,6 +86,32 @@ export async function POST(req: Request) {
       sim.callbackVerified = true;
       sim.timestamp = nowIso;
       tx.status = 'CARD_PAYMENT_SUCCESS';
+      tx.cardPaymentStatus = 'SUCCESS';
+
+      // Automatically create mandatory Provider Refund Protection Mandate on successful payment
+      if (!db.providerMandates) db.providerMandates = [];
+      let provMandate = db.providerMandates.find((m) => m.transactionId === tx.id);
+      const purchaseReq = db.purchaseRequests.find((r) => r.transactionId === tx.id);
+      if (!provMandate) {
+        provMandate = {
+          id: `pmand-${Date.now()}`,
+          providerId: tx.providerId || 'prov-arjun',
+          purchaseRequestId: purchaseReq?.id || `req-${tx.id}`,
+          transactionId: tx.id,
+          mandateRef: `PLK-PROV-MAND-${Math.floor(1000 + Math.random() * 9000)}`,
+          purpose: 'PerkLink Return & Cancellation Protection for Merchant Card Refunds',
+          maxAmount: tx.cardChargeAmount,
+          status: 'PENDING',
+          createdAt: nowIso,
+          expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+        };
+        db.providerMandates.unshift(provMandate);
+      }
+      tx.providerMandateStatus = provMandate.status;
+      tx.settlementStatus =
+        provMandate.status === 'AUTHORISED'
+          ? 'MANDATE_AUTHORISED_SETTLEMENT_HELD'
+          : 'BLOCKED_MANDATE_PENDING';
 
       db.auditLogs.push({
         id: `aud-${Date.now()}-1`,

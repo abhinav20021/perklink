@@ -39,6 +39,8 @@ export async function POST(
           matchIdx = parseInt(body.providerId.replace('prov-masked-', ''), 10) - 1;
         } else if (body.providerId.startsWith('Provider ')) {
           matchIdx = parseInt(body.providerId.replace('Provider ', ''), 10) - 1;
+        } else if (body.cardMetadataId.startsWith('card-masked-')) {
+          matchIdx = parseInt(body.cardMetadataId.replace('card-masked-', ''), 10) - 1;
         }
 
         const matched = (matchIdx >= 0 && txMatches[matchIdx]) ? txMatches[matchIdx] : txMatches[0];

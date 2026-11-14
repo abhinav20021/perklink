@@ -44,7 +44,7 @@ describe('PerkLink Core Deterministic Engines', () => {
     expect(hdfcSelect.eligibilityStatus).toBe('POTENTIALLY_ELIGIBLE');
   });
 
-  it('ranks 6 realistic matching SBI providers with Arjun as top recommendation', () => {
+  it('ranks established and newly enrolled matching SBI providers with Arjun as top pick', () => {
     const db = createSeedDatabase();
     const laptop = db.products.find((p) => p.id === 'prod-laptop-asus')!;
     const sbiOffer = db.bankOffers.find((o) => o.id === 'offer-sbi-10')!;
@@ -59,10 +59,25 @@ describe('PerkLink Core Deterministic Engines', () => {
       consents: db.consentRecords,
     });
 
-    expect(matches.length).toBe(6);
-    expect(matches[0].providerId).toBe('prov-arjun');
-    expect(matches[0].isRecommended).toBe(true);
-    expect(matches[0].matchScore).toBeGreaterThan(matches[1].matchScore);
+    const established = matches.filter((m) => !m.isNewProvider);
+    const newlyEnrolled = matches.filter((m) => m.isNewProvider);
+
+    expect(established.length).toBe(6);
+    expect(established[0].providerId).toBe('prov-arjun');
+    expect(established[0].isRecommended).toBe(true);
+    expect(established[0].matchScore!).toBeGreaterThan(established[1].matchScore!);
+    expect(established[0].providerAlias).toBe('Provider 01');
+
+    // New providers are included without disqualification, with honest null score/rating
+    expect(newlyEnrolled.length).toBe(3);
+    for (const newProv of newlyEnrolled) {
+      expect(newProv.isNewProvider).toBe(true);
+      expect(newProv.matchScore).toBeNull();
+      expect(newProv.rating).toBeUndefined();
+      expect(newProv.completedOrders).toBe(0);
+      expect(newProv.maxTransactionAmount).toBeGreaterThanOrEqual(46999);
+      expect(newProv.providerAlias).toMatch(/^Provider \d{2}$/);
+    }
   });
 
   it('blocks illegal state jumps and enforces preconditions on server FSM', () => {

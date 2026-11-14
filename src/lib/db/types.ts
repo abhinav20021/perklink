@@ -66,12 +66,13 @@ export interface ProviderProfile {
   id: string;
   userId: string;
   displayAlias: string;
-  rating: number;
-  completedOrders: number;
+  rating?: number;
+  completedOrders?: number;
   availabilityStatus: 'ONLINE' | 'BUSY' | 'OFFLINE';
-  avgAcceptanceMinutes: number;
+  avgAcceptanceMinutes?: number;
   maxTransactionAmount: number;
   supportedOfferCategories: string[];
+  isNewProvider?: boolean;
 }
 
 export interface CardProductMetadata {
@@ -232,16 +233,17 @@ export interface ProviderMatch {
   cardCategory: string;
   maskedLast4: string;
   availabilityStatus: 'ONLINE' | 'BUSY' | 'OFFLINE';
-  completedOrders: number;
-  avgAcceptanceMinutes: number;
-  rating: number;
+  completedOrders?: number;
+  avgAcceptanceMinutes?: number;
+  rating?: number;
   maxTransactionAmount: number;
   offerId: string;
   offeredReward: number;
-  matchScore: number;
-  scoreBreakdown: ProviderScoreBreakdown;
+  matchScore?: number | null;
+  scoreBreakdown?: ProviderScoreBreakdown;
   aiRationale: string;
   isRecommended: boolean;
+  isNewProvider?: boolean;
   createdAt: string;
 }
 
@@ -284,6 +286,78 @@ export interface UPIMandate {
   authorisedAt?: string;
   executedAt?: string;
   termsAccepted: boolean;
+}
+
+export type ProviderMandateStatus =
+  | 'NOT_CREATED'
+  | 'PENDING'
+  | 'AUTHORISED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'EXPIRED';
+
+export type SettlementStatus =
+  | 'BLOCKED_PAYMENT_PENDING'
+  | 'BLOCKED_MANDATE_PENDING'
+  | 'MANDATE_AUTHORISED_SETTLEMENT_HELD'
+  | 'BLOCKED_RETURN_PENDING'
+  | 'SETTLEMENT_ELIGIBLE'
+  | 'SETTLED'
+  | 'RECOVERY_PENDING'
+  | 'RECOVERED'
+  | 'RECOVERY_FAILED';
+
+export type MerchantRefundStatus =
+  | 'NONE'
+  | 'RETURN_REQUESTED'
+  | 'MERCHANT_REFUND_PENDING'
+  | 'MERCHANT_REFUND_CONFIRMED';
+
+export type RecoveryStatus =
+  | 'NONE'
+  | 'PROVIDER_RECOVERY_PENDING'
+  | 'PROVIDER_RECOVERY_SUCCESS'
+  | 'RECOVERY_FAILED';
+
+export type ShopperRefundStatus =
+  | 'NONE'
+  | 'SHOPPER_REFUND_PENDING'
+  | 'SHOPPER_REFUND_SUCCESS'
+  | 'REFUND_FAILED';
+
+export type CardPaymentStatus = 'NOT_INITIATED' | 'PENDING' | 'SUCCESS' | 'FAILED';
+
+export interface ProviderMandate {
+  id: string;
+  providerId: string;
+  purchaseRequestId: string;
+  transactionId: string;
+  mandateRef: string;
+  purpose: string;
+  maxAmount: number;
+  status: ProviderMandateStatus;
+  createdAt: string;
+  authorisedAt?: string;
+  expiresAt: string;
+  cancelledAt?: string;
+}
+
+export interface RefundRecoveryRecord {
+  id: string;
+  providerId: string;
+  purchaseRequestId: string;
+  transactionId: string;
+  originalCardTxId: string;
+  merchantRefundId: string;
+  confirmedMerchantRefundAmount: number;
+  recoveryAmount: number;
+  providerMandateId: string;
+  recoveryStatus: 'PROVIDER_RECOVERY_PENDING' | 'PROVIDER_RECOVERY_SUCCESS' | 'RECOVERY_FAILED';
+  shopperRefundStatus: 'SHOPPER_REFUND_PENDING' | 'SHOPPER_REFUND_SUCCESS' | 'REFUND_FAILED';
+  failureReason?: string;
+  createdAt: string;
+  recoveredAt?: string;
+  shopperRefundedAt?: string;
 }
 
 export interface PaymentSimulationRecord {
@@ -427,6 +501,12 @@ export interface Transaction {
     cardChargeAmount: number;
     shopperNetSavings: number;
   };
+  cardPaymentStatus?: CardPaymentStatus;
+  providerMandateStatus?: ProviderMandateStatus;
+  settlementStatus?: SettlementStatus;
+  merchantRefundStatus?: MerchantRefundStatus;
+  recoveryStatus?: RecoveryStatus;
+  shopperRefundStatus?: ShopperRefundStatus;
   flaggedForMismatch?: boolean;
   mismatchReason?: string;
   createdAt: string;
@@ -456,6 +536,8 @@ export interface PerkLinkDatabase {
   transactions: Transaction[];
   purchaseRequests: PurchaseRequest[];
   upiMandates: UPIMandate[];
+  providerMandates: ProviderMandate[];
+  refundRecoveries: RefundRecoveryRecord[];
   merchantOrders: MerchantOrder[];
   invoiceDocuments: InvoiceDocument[];
   verificationResults: VerificationResult[];
@@ -479,6 +561,16 @@ export interface RoleProjectedTransaction {
   providerProfile?: ProviderProfile;
   cardMetadata?: CardProductMetadata;
   upiMandate?: UPIMandate;
+  providerMandate?: ProviderMandate;
+  providerMandateSummary?: {
+    status: ProviderMandateStatus;
+    isProtected: boolean;
+    authorized: boolean;
+    authorisedAt?: string;
+    validityEnd?: string;
+  };
+  refundRecovery?: RefundRecoveryRecord;
+  refundRecoveries?: RefundRecoveryRecord[];
   merchantOrder?: Omit<
     MerchantOrder,
     'recipientPhone' | 'shippingAddress' | 'deliveryInstructions'
