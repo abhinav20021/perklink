@@ -149,9 +149,14 @@ export function rankProvidersForOffer(input: RankProvidersInput): ProviderMatch[
   }
 
   matches.sort((a, b) => b.matchScore - a.matchScore);
-  if (matches.length > 0) {
-    matches[0].isRecommended = true;
-  }
+  matches.forEach((m, idx) => {
+    const maskedLabel = `Provider ${String(idx + 1).padStart(2, '0')}`;
+    m.providerAlias = maskedLabel;
+    m.aiRationale = `${maskedLabel} holds an active ${m.cardProduct} (${m.cardCategory}), is currently ${m.availabilityStatus.toLowerCase()}, supports up to ₹${m.maxTransactionAmount.toLocaleString('en-IN')}, and has ${m.completedOrders} completed orders at a ${m.rating.toFixed(1)}★ rating (~${m.avgAcceptanceMinutes}m response).`;
+    if (idx === 0) {
+      m.isRecommended = true;
+    }
+  });
 
   return matches;
 }

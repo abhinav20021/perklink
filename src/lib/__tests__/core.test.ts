@@ -44,7 +44,7 @@ describe('PerkLink Core Deterministic Engines', () => {
     expect(hdfcSelect.eligibilityStatus).toBe('POTENTIALLY_ELIGIBLE');
   });
 
-  it('ranks online higher-rated SBI provider Arjun ahead of busy Neha', () => {
+  it('ranks 6 realistic matching SBI providers with Arjun as top recommendation', () => {
     const db = createSeedDatabase();
     const laptop = db.products.find((p) => p.id === 'prod-laptop-asus')!;
     const sbiOffer = db.bankOffers.find((o) => o.id === 'offer-sbi-10')!;
@@ -59,7 +59,7 @@ describe('PerkLink Core Deterministic Engines', () => {
       consents: db.consentRecords,
     });
 
-    expect(matches.length).toBe(2);
+    expect(matches.length).toBe(6);
     expect(matches[0].providerId).toBe('prov-arjun');
     expect(matches[0].isRecommended).toBe(true);
     expect(matches[0].matchScore).toBeGreaterThan(matches[1].matchScore);
@@ -110,5 +110,33 @@ describe('PerkLink Core Deterministic Engines', () => {
     expect(parsed.minimum_transaction).toBe(10000);
     expect(parsed.emi_eligible).toBe(false);
     expect(parsed.offer_type).toBe('instant_discount');
+  });
+
+  it('filters out ineligible (ICICI 60k, SBI EMI) and unverified (HDFC select) offers from shopper projection', () => {
+    const db = createSeedDatabase();
+    const laptop = db.products.find((p) => p.id === 'prod-laptop-asus')!;
+    const comparisons = evaluateAllOffers(
+      laptop,
+      db.bankOffers,
+      'PLK-TEST-ELIGIBLE',
+      db.config,
+      { now: new Date('2026-11-12T12:00:00Z') }
+    );
+    db.savingsComparisons.push(...comparisons);
+
+    const tx = db.transactions.find((t) => t.id === 'PLK-2026-1001')!;
+    tx.id = 'PLK-TEST-ELIGIBLE';
+    const shopperView = projectTransactionForRole(db, tx, 'SHOPPER_B');
+
+    // Only confirmed ELIGIBLE offers must be visible to the shopper
+    expect(shopperView.savingsComparisons.every((c) => c.eligibilityStatus === 'ELIGIBLE')).toBe(true);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-sbi-10')).toBe(true);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-hdfc-1500')).toBe(true);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-axis-1000')).toBe(true);
+
+    // Ineligible and unverified offers must NOT be visible
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-icici-60k')).toBe(false);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-sbi-emi')).toBe(false);
+    expect(shopperView.savingsComparisons.some((c) => c.offerId === 'offer-hdfc-select')).toBe(false);
   });
 });

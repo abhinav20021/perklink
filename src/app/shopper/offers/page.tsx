@@ -3,7 +3,6 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  AlertCircle,
   ArrowRight,
   Award,
   Bot,
@@ -12,7 +11,6 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
-  XCircle,
 } from 'lucide-react';
 import type { RoleProjectedTransaction } from '@/lib/db/types';
 import { formatInr } from '@/lib/utils';
@@ -53,6 +51,32 @@ function OffersContent() {
   const [deliveryInstructions, setDeliveryInstructions] = useState(
     'Call on arrival; security gate passcode 4420'
   );
+
+  async function selectOffer(txId: string, offerId: string) {
+    setError(null);
+    setSelectedOfferId(offerId);
+    const res = await fetch(`/api/transactions/${txId}/select-offer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ offerId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || 'Could not select offer');
+      return;
+    }
+    setDetail(data.data);
+    if (data.aiRecommendation) {
+      setAiHeadline(data.aiRecommendation.headline);
+      setAiAlternativeText(data.aiRecommendation.alternativeComparison);
+    }
+    const top = data.data.providerMatches?.[0];
+    if (top) {
+      setSelectedProviderKey(`${top.providerId}::${top.cardMetadataId}`);
+    } else {
+      setSelectedProviderKey('');
+    }
+  }
 
   useEffect(() => {
     fetch('/api/transactions')
@@ -111,32 +135,6 @@ function OffersContent() {
       active = false;
     };
   }, [selectedTxId]);
-
-  async function selectOffer(txId: string, offerId: string) {
-    setError(null);
-    setSelectedOfferId(offerId);
-    const res = await fetch(`/api/transactions/${txId}/select-offer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ offerId }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || 'Could not select offer');
-      return;
-    }
-    setDetail(data.data);
-    if (data.aiRecommendation) {
-      setAiHeadline(data.aiRecommendation.headline);
-      setAiAlternativeText(data.aiRecommendation.alternativeComparison);
-    }
-    const top = data.data.providerMatches?.[0];
-    if (top) {
-      setSelectedProviderKey(`${top.providerId}::${top.cardMetadataId}`);
-    } else {
-      setSelectedProviderKey('');
-    }
-  }
 
   async function handleSubmitRequest(e: React.FormEvent) {
     e.preventDefault();
@@ -247,7 +245,7 @@ function OffersContent() {
                   <CardHeader className="bg-[#002970] text-white flex items-center justify-between rounded-t-2xl">
                     <span className="font-bold text-sm flex items-center gap-1.5">
                       <Award className="h-4 w-4 text-[#00BAF2]" />
-                      Recommended Offer
+                      Selected Bank Offer
                     </span>
                     <Badge variant="green">
                       Save {formatInr(activeComparison.shopperNetSavings)}
@@ -308,7 +306,7 @@ function OffersContent() {
                   <CardHeader className="bg-sky-50 flex items-center justify-between rounded-t-2xl">
                     <span className="font-bold text-sm text-[#002970] flex items-center gap-1.5">
                       <Bot className="h-4 w-4 text-[#00BAF2]" />
-                      Recommended Card Provider (Transparent Score)
+                      {topProvider ? `${topProvider.providerAlias} Spotlight (Transparent Score)` : 'Card Provider Spotlight'}
                     </span>
                     {topProvider && (
                       <Badge variant="navy">
@@ -360,11 +358,11 @@ function OffersContent() {
 
                         <div className="rounded-2xl bg-sky-50/80 border border-sky-200 p-3.5 text-sm text-[#002970]">
                           <p className="text-xs font-bold uppercase tracking-wider text-sky-700 mb-1">
-                            Why This Provider Was Recommended (AI Explanation)
+                            Why This Provider Was Selected (AI Explanation)
                           </p>
                           <p>
-                            {detail.transaction.aiRecommendationExplanation ||
-                              topProvider.aiRationale}
+                            {topProvider.aiRationale ||
+                              detail.transaction.aiRecommendationExplanation}
                           </p>
                           {aiAlternativeText && (
                             <p className="text-xs text-slate-600 mt-2">
@@ -394,7 +392,7 @@ function OffersContent() {
                       </>
                     ) : (
                       <p className="text-sm text-amber-800">
-                        No online registered Class A provider matches {activeComparison.bankName} for this amount. Try selecting another eligible bank offer below.
+                        No online registered Class A provider matches {activeComparison.bankName} for this amount.
                       </p>
                     )}
                   </CardContent>
@@ -402,255 +400,241 @@ function OffersContent() {
               </div>
             )}
 
-            {/* All Evaluated Offers Comparison (Deterministic Eligibility) */}
-            <Card>
-              <CardHeader>
-                <h2 className="font-bold text-[#002970] text-base">
-                  Deterministic Bank Offer &amp; Savings Comparison
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Backend rules verify minimum spend, merchant, category, EMI exclusions &amp; validity dates. Ineligible offers cannot be selected.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {detail.savingsComparisons.map((comp) => {
-                  const isSelected = comp.offerId === selectedOfferId;
-                  const eligible = comp.eligibilityStatus === 'ELIGIBLE';
-                  const potential = comp.eligibilityStatus === 'POTENTIALLY_ELIGIBLE';
+            {/* Matched Card Providers Grid (All Providers for Selected Offer) */}
+            {detail.providerMatches.length > 0 && activeComparison && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-[#002970] flex items-center gap-2">
+                      <span>Available Card Providers for {activeComparison.bankName}</span>
+                      <Badge variant="navy">{detail.providerMatches.length} Verified Cardholders</Badge>
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Class A providers holding registered {activeComparison.bankName} credit cards matching this purchase. Identities masked to protect user privacy.
+                    </p>
+                  </div>
+                </div>
 
-                  return (
-                    <div
-                      key={comp.offerId}
-                      className={`rounded-2xl border p-4 transition ${
-                        isSelected
-                          ? 'border-[#002970] bg-sky-50/40'
-                          : eligible || potential
-                          ? 'border-slate-200 bg-white hover:border-sky-300'
-                          : 'border-slate-200 bg-slate-50/80 opacity-75'
-                      }`}
-                    >
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-extrabold text-[#002970]">
-                              {comp.bankName}
-                            </span>
-                            <span className="text-xs font-medium text-slate-500">
-                              {comp.cardType}
-                            </span>
-                            {eligible && (
-                              <Badge variant="green">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Eligible
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {detail.providerMatches.map((pm) => {
+                    const key = `${pm.providerId}::${pm.cardMetadataId}`;
+                    const isSelected = key === selectedProviderKey || (!selectedProviderKey && pm.isRecommended);
+
+                    return (
+                      <Card
+                        key={pm.id}
+                        onClick={() => setSelectedProviderKey(key)}
+                        className={`cursor-pointer transition-all duration-200 border-2 rounded-2xl ${
+                          isSelected
+                            ? 'border-[#002970] bg-sky-50/40 shadow-md ring-2 ring-[#002970]/15'
+                            : 'border-slate-200 bg-white hover:border-[#00BAF2] hover:shadow-sm'
+                        }`}
+                      >
+                        <CardContent className="p-4 space-y-3.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-base text-[#002970]">
+                                {pm.providerAlias}
+                              </span>
+                              <Badge variant="green" className="text-[10px] px-2 py-0.5">
+                                {pm.availabilityStatus}
                               </Badge>
-                            )}
-                            {potential && (
-                              <Badge variant="amber">
-                                <AlertCircle className="h-3 w-3" />
-                                Potentially Eligible — Verification Required
+                            </div>
+                            {pm.isRecommended ? (
+                              <Badge variant="blue" className="text-[10px] px-2 py-0.5 font-bold">
+                                <Sparkles className="h-3 w-3 mr-1" />
+                                AI Top Pick
                               </Badge>
-                            )}
-                            {!eligible && !potential && (
-                              <Badge variant="red">
-                                <XCircle className="h-3 w-3" />
-                                Not Eligible
+                            ) : (
+                              <Badge variant="navy" className="text-[10px] px-2 py-0.5 font-bold">
+                                Score {pm.matchScore}
                               </Badge>
-                            )}
-                            {comp.isRecommended && (
-                              <Badge variant="blue">AI Top Pick</Badge>
                             )}
                           </div>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {comp.offerTitle}
-                          </p>
-                          <p className="text-xs text-slate-600">{comp.eligibilityReason}</p>
-                        </div>
 
-                        <div className="flex items-center gap-4 shrink-0 tabular-nums">
-                          <div className="text-right">
-                            <p className="text-[11px] text-slate-500">Final Payable</p>
-                            <p className="font-extrabold text-[#002970]">
-                              {formatInr(comp.shopperFinalAmount)}
+                          {/* Bank & Card Details */}
+                          <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-2.5 space-y-0.5">
+                            <p className="text-xs font-bold text-slate-900 flex items-center justify-between">
+                              <span>{pm.cardProduct}</span>
+                              <span className="text-[11px] font-mono text-slate-500">•••• {pm.maskedLast4}</span>
                             </p>
-                            <p className="text-xs font-semibold text-[#00B86B]">
-                              Save {formatInr(comp.shopperNetSavings)}
+                            <p className="text-[11px] text-slate-500">
+                              {pm.bankName} • {pm.cardCategory} Tier
                             </p>
                           </div>
+
+                          {/* 6 Key Match Metrics */}
+                          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                              <span className="text-[10px] text-slate-500 block">Match Score</span>
+                              <strong className="text-[#002970] font-bold">{pm.matchScore}/100</strong>
+                            </div>
+                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                              <span className="text-[10px] text-slate-500 block">Rating</span>
+                              <strong className="text-slate-900 font-bold flex items-center justify-center gap-0.5">
+                                <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
+                                {pm.rating.toFixed(1)}
+                              </strong>
+                            </div>
+                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                              <span className="text-[10px] text-slate-500 block">Fulfilled</span>
+                              <strong className="text-slate-900 font-bold">{pm.completedOrders} orders</strong>
+                            </div>
+                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                              <span className="text-[10px] text-slate-500 block">Response</span>
+                              <strong className="text-slate-900 font-bold">~{pm.avgAcceptanceMinutes}m</strong>
+                            </div>
+                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                              <span className="text-[10px] text-slate-500 block">Max Limit</span>
+                              <strong className="text-slate-900 font-bold">{formatInr(pm.maxTransactionAmount)}</strong>
+                            </div>
+                            <div className="rounded-lg bg-white border border-slate-200 p-1.5">
+                              <span className="text-[10px] text-slate-500 block">Reward</span>
+                              <strong className="text-[#00B86B] font-bold">{formatInr(pm.offeredReward)}</strong>
+                            </div>
+                          </div>
+
+                          {/* Select Provider Action Button */}
                           <Button
+                            type="button"
                             size="sm"
                             variant={isSelected ? 'primary' : 'outline'}
-                            disabled={comp.eligibilityStatus === 'NOT_ELIGIBLE'}
-                            onClick={() =>
-                              selectOffer(detail.transaction.id, comp.offerId)
-                            }
+                            className={`w-full font-semibold transition ${
+                              isSelected
+                                ? 'bg-[#002970] text-white hover:bg-[#001f54]'
+                                : 'text-[#002970] border-slate-300 hover:border-[#002970] hover:bg-sky-50'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProviderKey(key);
+                            }}
                           >
-                            {isSelected ? 'Selected' : 'Compare & Select'}
+                            {isSelected ? (
+                              <span className="flex items-center justify-center gap-1.5">
+                                <CheckCircle2 className="h-4 w-4 text-[#00BAF2]" />
+                                Selected Provider ✓
+                              </span>
+                            ) : (
+                              'Select Provider'
+                            )}
                           </Button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-            {/* Alternative Providers + Private Delivery Form & Dispatch */}
+            {/* Stage 4 — Private Delivery Details Form & Submission */}
             {detail.providerMatches.length > 0 && (
-              <div className="grid lg:grid-cols-12 gap-5">
-                <Card className="lg:col-span-5">
-                  <CardHeader>
-                    <h2 className="font-bold text-[#002970] text-sm">
-                      Matched Class A Providers ({detail.providerMatches.length})
+              <Card className="border border-slate-200">
+                <CardHeader className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div>
+                    <h2 className="font-extrabold text-[#002970] text-base">
+                      Stage 4 — Delivery Details (Private to Class B &amp; Merchant)
                     </h2>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {detail.providerMatches.map((pm) => {
-                      const key = `${pm.providerId}::${pm.cardMetadataId}`;
-                      const active = key === selectedProviderKey;
-                      return (
-                        <div
-                          key={pm.id}
-                          onClick={() => setSelectedProviderKey(key)}
-                          className={`rounded-xl border p-3.5 cursor-pointer transition ${
-                            active
-                              ? 'border-[#002970] bg-sky-50'
-                              : 'border-slate-200 hover:border-sky-300'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="font-bold text-sm text-slate-900">
-                                {pm.providerAlias}
-                              </p>
-                              <p className="text-xs text-slate-600">
-                                {pm.cardProduct} •••• {pm.maskedLast4}
-                              </p>
-                            </div>
-                            <Badge variant={pm.isRecommended ? 'green' : 'default'}>
-                              Score {pm.matchScore}
-                            </Badge>
-                          </div>
-                          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                            <span>
-                              {pm.rating.toFixed(1)}★ • {pm.completedOrders} orders • ~
-                              {pm.avgAcceptanceMinutes}m
-                            </span>
-                            <span className="font-bold text-[#002970]">
-                              Reward {formatInr(pm.offeredReward)}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-
-                {/* Private Delivery Form */}
-                <Card className="lg:col-span-7">
-                  <CardHeader className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h2 className="font-bold text-[#002970] text-sm">
-                        Stage 4 — Delivery Details (Private to Class B &amp; Merchant)
-                      </h2>
-                      <p className="text-xs text-slate-500">
-                        Protected by separated identity architecture: Class A never sees your phone or shipping address.
-                      </p>
-                    </div>
-                    <Badge variant="navy">
-                      <Lock className="h-3 w-3" />
-                      PII Masked from Provider
-                    </Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <form onSubmit={handleSubmitRequest} className="space-y-3">
-                      <div className="grid sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs font-semibold text-slate-600">
-                            Recipient Name
-                          </label>
-                          <Input
-                            required
-                            value={recipientName}
-                            onChange={(e) => setRecipientName(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-slate-600">
-                            Mobile Number
-                          </label>
-                          <Input
-                            required
-                            value={mobileNumber}
-                            onChange={(e) => setMobileNumber(e.target.value)}
-                          />
-                        </div>
-                      </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Protected by separated identity architecture: Class A never sees your phone or shipping address.
+                    </p>
+                  </div>
+                  <Badge variant="navy">
+                    <Lock className="h-3 w-3 mr-1" />
+                    PII Masked from Provider
+                  </Badge>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <form onSubmit={handleSubmitRequest} className="space-y-4">
+                    <div className="grid sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="text-xs font-semibold text-slate-600">
-                          Full Shipping Address
+                        <label className="text-xs font-semibold text-slate-600 block mb-1">
+                          Recipient Name
                         </label>
                         <Input
                           required
-                          value={shippingAddress}
-                          onChange={(e) => setShippingAddress(e.target.value)}
+                          value={recipientName}
+                          onChange={(e) => setRecipientName(e.target.value)}
                         />
                       </div>
-                      <div className="grid sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-xs font-semibold text-slate-600">City</label>
-                          <Input value={city} onChange={(e) => setCity(e.target.value)} />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-slate-600">PIN Code</label>
-                          <Input
-                            required
-                            maxLength={6}
-                            value={pinCode}
-                            onChange={(e) => setPinCode(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-slate-600">
-                            Delivery Instructions
-                          </label>
-                          <Input
-                            value={deliveryInstructions}
-                            onChange={(e) => setDeliveryInstructions(e.target.value)}
-                          />
-                        </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 block mb-1">
+                          Mobile Number
+                        </label>
+                        <Input
+                          required
+                          value={mobileNumber}
+                          onChange={(e) => setMobileNumber(e.target.value)}
+                        />
                       </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 block mb-1">
+                        Full Shipping Address
+                      </label>
+                      <Input
+                        required
+                        value={shippingAddress}
+                        onChange={(e) => setShippingAddress(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 block mb-1">City</label>
+                        <Input value={city} onChange={(e) => setCity(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 block mb-1">PIN Code</label>
+                        <Input
+                          required
+                          maxLength={6}
+                          value={pinCode}
+                          onChange={(e) => setPinCode(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 block mb-1">
+                          Delivery Instructions
+                        </label>
+                        <Input
+                          value={deliveryInstructions}
+                          onChange={(e) => setDeliveryInstructions(e.target.value)}
+                        />
+                      </div>
+                    </div>
 
-                      <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-xs text-slate-600">
-                          Selected Provider:{' '}
-                          <strong className="text-[#002970]">
-                            {topProvider?.providerAlias}
-                          </strong>{' '}
-                          (Reward {formatInr(topProvider?.offeredReward ?? 250)})
-                        </div>
-                        <Button
-                          type="submit"
-                          size="lg"
-                          variant="paytm"
-                          disabled={
-                            submitting ||
-                            !selectedProviderKey ||
-                            !['PRODUCT_ANALYSED', 'OFFER_SELECTED'].includes(
-                              detail.transaction.status
-                            )
-                          }
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                          {submitting
-                            ? 'Sending Masked Request...'
-                            : 'Select this provider'}
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
+                    <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                      <div className="rounded-xl bg-sky-50 border border-sky-100 px-3 py-2 text-xs text-slate-700">
+                        Selected Provider:{' '}
+                        <strong className="text-[#002970]">
+                          {topProvider?.providerAlias}
+                        </strong>{' '}
+                        ({topProvider?.cardProduct}) • Reward{' '}
+                        <strong className="text-[#00B86B]">
+                          {formatInr(topProvider?.offeredReward ?? 250)}
+                        </strong>
                       </div>
-                    </form>
-                  </CardContent>
-                </Card>
-              </div>
+                      <Button
+                        type="submit"
+                        size="lg"
+                        variant="paytm"
+                        disabled={
+                          submitting ||
+                          !selectedProviderKey ||
+                          !['PRODUCT_ANALYSED', 'OFFER_SELECTED'].includes(
+                            detail.transaction.status
+                          )
+                        }
+                      >
+                        <ShieldCheck className="h-4 w-4 mr-1.5" />
+                        {submitting
+                          ? 'Sending Masked Request...'
+                          : `Confirm & Request ${topProvider?.providerAlias || 'Provider'}`}
+                        <ArrowRight className="h-4 w-4 ml-1.5" />
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
             )}
           </>
         )}

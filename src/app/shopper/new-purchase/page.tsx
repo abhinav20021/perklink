@@ -3,22 +3,28 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  AlertTriangle,
   ArrowRight,
   Award,
   Bot,
+  Calendar,
   Check,
   CheckCircle2,
+  Clock,
   Cpu,
-  FileCode2,
-  Layers,
+  CreditCard,
   Link2,
+  Percent,
   ShieldCheck,
   Sparkles,
   Tag,
   Zap,
 } from 'lucide-react';
-import type { AIAnalysisResult, Product, SavingsComparison } from '@/lib/db/types';
+import type {
+  AIAnalysisResult,
+  Product,
+  SavingsComparison,
+  StructuredParsedOffer,
+} from '@/lib/db/types';
 import { formatInr } from '@/lib/utils';
 import { AppShell } from '@/components/layout/AppShell';
 import {
@@ -28,7 +34,6 @@ import {
   CardContent,
   CardHeader,
   Input,
-  Textarea,
 } from '@/components/ui/primitives';
 
 const SAMPLE_PRODUCT_URLS = [
@@ -48,17 +53,32 @@ const SAMPLE_PRODUCT_URLS = [
 
 const ANALYSIS_STEPS = [
   'Inspecting product URL & extracting brand, model, merchant & price...',
-  'Parsing natural-language bank offer terms into structured JSON rules...',
+  'Discovering applicable bank promotions & cardholder eligibility rules...',
   'Validating eligibility constraints & running deterministic savings math...',
 ];
+
+function generateShopperExplanation(
+  product: Product,
+  savings: SavingsComparison,
+  parsed?: StructuredParsedOffer
+): string {
+  const prodName = product.title;
+  const bank = savings.bankName;
+  const card = savings.cardType;
+  const discStr = `${savings.discountPercentage}% instant discount (up to ${formatInr(savings.maxDiscount)})`;
+  const netSavingsStr = formatInr(savings.shopperNetSavings);
+
+  const emiText = parsed?.emi_eligible
+    ? 'Applicable on both EMI and full-swipe card payments.'
+    : 'Requires a standard full-swipe non-EMI transaction.';
+
+  return `This ${product.category.toLowerCase().replace(/s$/, '')} (${prodName} listed at ${formatInr(savings.originalPrice)}) qualifies for the ${bank} ${card} promotion offering ${discStr}. Routing through a matched ${bank} cardholder unlocks ${netSavingsStr} in net savings after provider reward and facilitation fees. ${emiText}`;
+}
 
 export default function NewPurchasePage() {
   const router = useRouter();
   const [mode, setMode] = useState<'URL' | 'MANUAL'>('URL');
   const [url, setUrl] = useState(SAMPLE_PRODUCT_URLS[0].url);
-  const [customOfferText, setCustomOfferText] = useState(
-    'Get 10% instant discount up to ₹2,000 on selected SBI credit cards. Minimum transaction ₹10,000. Not valid on EMI transactions.'
-  );
   const [isEmiPurchase, setIsEmiPurchase] = useState(false);
 
   // Manual fallback fields
@@ -72,6 +92,7 @@ export default function NewPurchasePage() {
   const [analysing, setAnalysing] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [navigating, setNavigating] = useState(false);
 
   const [analysisResult, setAnalysisResult] = useState<{
     transactionId: string;
@@ -80,12 +101,12 @@ export default function NewPurchasePage() {
     savingsComparisons: SavingsComparison[];
   } | null>(null);
 
-  const [nlParsedPreview, setNlParsedPreview] = useState<Record<string, unknown> | null>(
-    null
+  const [selectedOfferId, setSelectedOfferId] = useState<string>('');
+
+  // Filter ONLY confirmed ELIGIBLE offers for the shopper view
+  const eligibleOffers = (analysisResult?.savingsComparisons || []).filter(
+    (s) => s.eligibilityStatus === 'ELIGIBLE'
   );
-  const [parsingNl, setParsingNl] = useState(false);
-  const [showRawSchema, setShowRawSchema] = useState(false);
-  const [showNlRawSchema, setShowNlRawSchema] = useState(false);
 
   async function handleAnalyse(e: React.FormEvent) {
     e.preventDefault();
@@ -99,10 +120,9 @@ export default function NewPurchasePage() {
     try {
       const payload =
         mode === 'URL'
-          ? { url, customOfferText, isEmiPurchase }
+          ? { url: url.trim(), isEmiPurchase }
           : {
               url: '',
-              customOfferText,
               isEmiPurchase,
               manualInput: {
                 title: manualTitle,
@@ -124,12 +144,31 @@ export default function NewPurchasePage() {
         throw new Error(data.error || 'AI analysis failed');
       }
 
+      const comparisons: SavingsComparison[] = data.savingsComparisons || [];
+      const eligibleOnly = comparisons.filter((s) => s.eligibilityStatus === 'ELIGIBLE');
+      const topRec =
+        eligibleOnly.find((s) => s.isRecommended) ||
+        eligibleOnly[0] ||
+        null;
+
+      const initialOfferId = topRec ? topRec.offerId : '';
+      setSelectedOfferId(initialOfferId);
+
       setAnalysisResult({
         transactionId: data.transaction.id,
         product: data.product,
         aiAnalysis: data.aiAnalysis,
-        savingsComparisons: data.savingsComparisons,
+        savingsComparisons: eligibleOnly,
       });
+
+      // Synchronize initial offer selection with backend transaction state
+      if (initialOfferId && data.transaction?.id) {
+        fetch(`/api/transactions/${data.transaction.id}/select-offer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ offerId: initialOfferId, isEmiPurchase }),
+        }).catch((err) => console.warn('Sync initial offer error:', err));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to analyse product');
     } finally {
@@ -139,20 +178,50 @@ export default function NewPurchasePage() {
     }
   }
 
-  async function handleParseOfferOnly() {
-    setParsingNl(true);
-    try {
-      const res = await fetch('/api/ai/parse-offer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ offerText: customOfferText }),
-      });
-      const data = await res.json();
-      if (res.ok) setNlParsedPreview(data.parsedOffer);
-    } finally {
-      setParsingNl(false);
-    }
+  function handleSelectOffer(offerId: string) {
+    if (!analysisResult) return;
+    setSelectedOfferId(offerId);
+
+    // Sync selected offer to transaction record without re-running product extraction
+    fetch(`/api/transactions/${analysisResult.transactionId}/select-offer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ offerId, isEmiPurchase }),
+    }).catch((err) => console.warn('Failed to update selected offer:', err));
   }
+
+  async function handleProceed() {
+    if (!analysisResult || !selectedOfferId) return;
+    setNavigating(true);
+    try {
+      // Ensure backend transaction record has the selected eligible offer locked
+      await fetch(
+        `/api/transactions/${analysisResult.transactionId}/select-offer`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ offerId: selectedOfferId, isEmiPurchase }),
+        }
+      );
+    } catch (err) {
+      console.warn('Sync offer before navigation error:', err);
+    }
+    router.push(`/shopper/offers?txId=${analysisResult.transactionId}`);
+  }
+
+  // Active selected eligible offer across the page
+  const selectedSavings: SavingsComparison | null =
+    eligibleOffers.find((s) => s.offerId === selectedOfferId) ||
+    eligibleOffers.find((s) => s.isRecommended) ||
+    eligibleOffers[0] ||
+    null;
+
+  const matchingParsedOffer: StructuredParsedOffer | undefined =
+    analysisResult?.aiAnalysis.parsedOffers.find(
+      (p) =>
+        p.offerId === selectedSavings?.offerId ||
+        p.bank.toLowerCase() === selectedSavings?.bankName.toLowerCase()
+    ) || analysisResult?.aiAnalysis.parsedOffers[0];
 
   return (
     <AppShell requiredRole="SHOPPER_B">
@@ -168,7 +237,7 @@ export default function NewPurchasePage() {
               Analyse Product URL &amp; Bank Offers
             </h1>
             <p className="text-sm text-slate-600">
-              Paste any ecommerce link. AI extracts structured product specs, parses natural-language offer rules, and runs deterministic savings checks.
+              Paste any ecommerce product link. PerkLink AI inspects the catalog, discovers eligible bank discounts, and calculates your maximum net savings.
             </p>
           </div>
         </div>
@@ -201,7 +270,7 @@ export default function NewPurchasePage() {
                 Manual Product Entry
               </button>
             </div>
-            <Badge variant="default">Server-Side Gemini 3.7 Flash + Curated Fallback</Badge>
+            <Badge variant="default">AI Model: Gemini 3.7 Flash</Badge>
           </CardHeader>
 
           <CardContent>
@@ -215,6 +284,7 @@ export default function NewPurchasePage() {
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     placeholder="https://www.flipkart.com/..."
+                    required
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-medium text-slate-500">
@@ -225,7 +295,7 @@ export default function NewPurchasePage() {
                         key={d.url}
                         type="button"
                         onClick={() => setUrl(d.url)}
-                        className="text-xs px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-[#002970] font-semibold border border-sky-200 cursor-pointer"
+                        className="text-xs px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-[#002970] font-semibold border border-sky-200 cursor-pointer transition"
                       >
                         {d.label}
                       </button>
@@ -235,8 +305,12 @@ export default function NewPurchasePage() {
               ) : (
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div>
-                    <label className="text-xs font-semibold text-slate-600">Product Name</label>
-                    <Input value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} />
+                    <label className="text-xs font-semibold text-slate-600">Product Name *</label>
+                    <Input
+                      required
+                      value={manualTitle}
+                      onChange={(e) => setManualTitle(e.target.value)}
+                    />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-slate-600">Brand</label>
@@ -255,8 +329,9 @@ export default function NewPurchasePage() {
                     <Input value={manualCategory} onChange={(e) => setManualCategory(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-600">Listed Price (₹)</label>
+                    <label className="text-xs font-semibold text-slate-600">Listed Price (₹) *</label>
                     <Input
+                      required
                       type="number"
                       value={manualPrice}
                       onChange={(e) => setManualPrice(e.target.value)}
@@ -265,90 +340,7 @@ export default function NewPurchasePage() {
                 </div>
               )}
 
-              {/* Natural Language Bank Offer Parser Tester */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="text-xs font-bold text-[#002970] flex items-center gap-1.5">
-                    <FileCode2 className="h-4 w-4 text-[#00BAF2]" />
-                    Natural-Language Bank Offer Understanding (Optional Text Input)
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={parsingNl}
-                    onClick={handleParseOfferOnly}
-                  >
-                    {parsingNl ? 'Parsing...' : 'Preview Structured Rules'}
-                  </Button>
-                </div>
-                <Textarea
-                  rows={2}
-                  value={customOfferText}
-                  onChange={(e) => setCustomOfferText(e.target.value)}
-                />
-                {nlParsedPreview && (
-                  <div className="space-y-2 pt-1">
-                    <div className="rounded-xl border border-sky-200 bg-white p-3.5 shadow-sm space-y-2.5">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-full bg-[#002970] text-white text-xs font-extrabold">
-                            {String(nlParsedPreview.bank || 'Bank Offer')}
-                          </span>
-                          <span className="text-xs font-bold text-slate-800">
-                            {String(nlParsedPreview.card_type || 'Selected Cards')}
-                          </span>
-                        </div>
-                        <span className="text-xs font-extrabold text-[#00B86B] bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                          {Number(nlParsedPreview.discount_percentage) || 10}% Instant Off (Up to ₹{Number(nlParsedPreview.maximum_discount || 2000).toLocaleString('en-IN')})
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                        <div className="rounded-lg bg-slate-50 p-2 border border-slate-100">
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Min Spend</span>
-                          <strong className="text-slate-800">₹{Number(nlParsedPreview.minimum_transaction || 0).toLocaleString('en-IN')}</strong>
-                        </div>
-                        <div className="rounded-lg bg-slate-50 p-2 border border-slate-100">
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Max Cap</span>
-                          <strong className="text-slate-800">₹{Number(nlParsedPreview.maximum_discount || 0).toLocaleString('en-IN')}</strong>
-                        </div>
-                        <div className="rounded-lg bg-slate-50 p-2 border border-slate-100">
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">EMI Allowed</span>
-                          <strong className={nlParsedPreview.emi_eligible ? 'text-emerald-700' : 'text-slate-800'}>
-                            {nlParsedPreview.emi_eligible ? 'Yes (EMI Eligible)' : 'No (Non-EMI Only)'}
-                          </strong>
-                        </div>
-                        <div className="rounded-lg bg-slate-50 p-2 border border-slate-100">
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Offer Type</span>
-                          <strong className="text-slate-800 capitalize">
-                            {String(nlParsedPreview.offer_type || 'instant_discount').replace('_', ' ')}
-                          </strong>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-[#00B86B]" />
-                          Parsed &amp; validated into strict structured schema
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setShowNlRawSchema((prev) => !prev)}
-                          className="text-[11px] font-semibold text-[#002970] hover:text-[#00BAF2] underline cursor-pointer"
-                        >
-                          {showNlRawSchema ? 'Hide Schema' : 'Inspect JSON Schema'}
-                        </button>
-                      </div>
-                      {showNlRawSchema && (
-                        <pre className="rounded-xl bg-slate-900 text-sky-200 p-3 text-xs overflow-x-auto font-mono mt-2">
-                          {JSON.stringify(nlParsedPreview, null, 2)}
-                        </pre>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
                 <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
                   <input
                     type="checkbox"
@@ -405,328 +397,433 @@ export default function NewPurchasePage() {
           </CardContent>
         </Card>
 
-        {/* Extracted AI Product + Offer Intelligence Output */}
+        {/* AI Extracted Output */}
         {analysisResult && (
-          <div className="space-y-5">
-            {analysisResult.aiAnalysis.usedFallback && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3 text-xs text-amber-900">
-                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-6">
+            {/* Top Row: Section A & Section B side by side on desktop, stacked on mobile */}
+            <div className="grid lg:grid-cols-2 gap-6 items-stretch">
+              {/* SECTION A: AI Product Understanding */}
+              <Card className="flex flex-col justify-between">
                 <div>
-                  <p className="font-bold">Transparent Catalog Fallback Notice</p>
-                  <p>{analysisResult.aiAnalysis.fallbackReason}</p>
+                  <CardHeader className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-[#002970] flex items-center gap-1.5">
+                      <Tag className="h-4 w-4 text-[#00BAF2]" />
+                      A. AI Product Understanding
+                    </span>
+                    <Badge variant="blue">{analysisResult.aiAnalysis.modelUsed}</Badge>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <img
+                      src={analysisResult.aiAnalysis.productUnderstanding.imageUrl}
+                      alt={analysisResult.aiAnalysis.productUnderstanding.productName}
+                      className="w-full h-44 rounded-xl border border-slate-200 object-contain bg-white p-2"
+                    />
+                    <div className="space-y-2 text-sm">
+                      <h2 className="font-extrabold text-slate-900 text-lg leading-snug">
+                        {analysisResult.aiAnalysis.productUnderstanding.productName}
+                      </h2>
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                        <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100">
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Brand</span>
+                          <strong className="text-slate-800 text-sm">
+                            {analysisResult.aiAnalysis.productUnderstanding.brand}
+                          </strong>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100">
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Model</span>
+                          <strong className="text-slate-800 text-sm">
+                            {analysisResult.aiAnalysis.productUnderstanding.model}
+                          </strong>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100">
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Merchant</span>
+                          <strong className="text-slate-800 text-sm">
+                            {analysisResult.aiAnalysis.productUnderstanding.merchant}
+                          </strong>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-100">
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold">Category</span>
+                          <strong className="text-slate-800 text-sm">
+                            {analysisResult.aiAnalysis.productUnderstanding.category}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
                 </div>
-              </div>
-            )}
 
-            <div className="grid lg:grid-cols-12 gap-5">
-              {/* Product Understanding Card */}
-              <Card className="lg:col-span-5">
-                <CardHeader className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-[#002970]">
-                    A. AI Product Understanding
+                <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 rounded-b-2xl flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500">Extracted Listed Price</span>
+                  <span className="text-xl font-black text-[#002970] tabular-nums">
+                    {formatInr(analysisResult.aiAnalysis.productUnderstanding.listedPrice)}
                   </span>
-                  <Badge variant="blue">{analysisResult.aiAnalysis.modelUsed}</Badge>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <img
-                    src={analysisResult.aiAnalysis.productUnderstanding.imageUrl}
-                    alt={analysisResult.aiAnalysis.productUnderstanding.productName}
-                    className="w-full h-44 rounded-xl border border-slate-200 object-contain bg-white p-2"
-                  />
-                  <div className="space-y-1.5 text-sm">
-                    <h2 className="font-extrabold text-slate-900 text-lg">
-                      {analysisResult.aiAnalysis.productUnderstanding.productName}
-                    </h2>
-                    <div className="grid grid-cols-2 gap-2 text-xs pt-2">
-                      <div className="rounded-lg bg-slate-50 p-2">
-                        <span className="text-slate-400 block">Brand</span>
-                        <strong className="text-slate-800">
-                          {analysisResult.aiAnalysis.productUnderstanding.brand}
-                        </strong>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-2">
-                        <span className="text-slate-400 block">Model</span>
-                        <strong className="text-slate-800">
-                          {analysisResult.aiAnalysis.productUnderstanding.model}
-                        </strong>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-2">
-                        <span className="text-slate-400 block">Merchant</span>
-                        <strong className="text-slate-800">
-                          {analysisResult.aiAnalysis.productUnderstanding.merchant}
-                        </strong>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-2">
-                        <span className="text-slate-400 block">Category</span>
-                        <strong className="text-slate-800">
-                          {analysisResult.aiAnalysis.productUnderstanding.category}
-                        </strong>
-                      </div>
-                    </div>
-                    <div className="pt-2 flex items-center justify-between border-t border-slate-100">
-                      <span className="text-xs text-slate-500">Extracted Listed Price</span>
-                      <span className="text-xl font-extrabold text-[#002970] tabular-nums">
-                        {formatInr(analysisResult.aiAnalysis.productUnderstanding.listedPrice)}
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
+                </div>
               </Card>
 
-              {/* Structured Offer Understanding + Explanation */}
-              <Card className="lg:col-span-7">
-                <CardHeader className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-[#002970] flex items-center gap-1.5">
-                    <Bot className="h-4 w-4 text-[#00BAF2]" />
-                    B. AI Offer Understanding &amp; Shopper Explanation
-                  </span>
-                  <Badge variant="green">
-                    {
-                      analysisResult.savingsComparisons.filter(
-                        (s) => s.eligibilityStatus === 'ELIGIBLE'
-                      ).length
-                    }{' '}
-                    Eligible Offers
-                  </Badge>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="rounded-2xl bg-sky-50 border border-sky-200 p-4 text-sm text-[#002970] leading-relaxed">
-                    <p className="font-bold text-xs uppercase tracking-wider text-sky-700 mb-1">
-                      Shopper-Friendly AI Explanation
-                    </p>
-                    {analysisResult.aiAnalysis.shopperExplanation}
-                  </div>
-
-                  {analysisResult.aiAnalysis.uncertainties.length > 0 && (
-                    <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-700 space-y-1">
-                      <p className="font-bold text-slate-800">
-                        Explicitly Surfaced Uncertainties (Zero Fabrication):
-                      </p>
-                      <ul className="list-disc pl-4 space-y-0.5">
-                        {analysisResult.aiAnalysis.uncertainties.map((u, i) => (
-                          <li key={i}>{u}</li>
-                        ))}
-                      </ul>
+              {/* SECTION B: AI Offer Understanding & Shopper Explanation */}
+              <Card className="flex flex-col justify-between">
+                <div>
+                  <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-bold text-sm text-[#002970] flex items-center gap-1.5">
+                      <Bot className="h-4 w-4 text-[#00BAF2]" />
+                      B. AI Offer Understanding &amp; Shopper Explanation
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {selectedSavings?.isRecommended && (
+                        <Badge variant="blue">
+                          <Award className="h-3 w-3" />
+                          AI Best Savings Pick
+                        </Badge>
+                      )}
+                      <Badge variant={eligibleOffers.length > 0 ? 'green' : 'amber'}>
+                        {eligibleOffers.length} Eligible {eligibleOffers.length === 1 ? 'Offer' : 'Offers'}
+                      </Badge>
                     </div>
-                  )}
+                  </CardHeader>
 
-                  {/* AI Top Offer Recommendation Spotlight */}
-                  {(() => {
-                    const bestOffer =
-                      analysisResult.savingsComparisons.find((s) => s.isRecommended) ||
-                      analysisResult.savingsComparisons.find((s) => s.eligibilityStatus === 'ELIGIBLE') ||
-                      analysisResult.savingsComparisons[0];
-
-                    if (!bestOffer) return null;
-
-                    return (
-                      <div className="rounded-2xl border-2 border-emerald-400 bg-gradient-to-br from-emerald-50/90 via-teal-50/40 to-white p-4 space-y-3 shadow-xs">
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-100 pb-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-0.5 text-xs font-extrabold text-white">
-                              <Award className="h-3.5 w-3.5" />
-                              AI Best Savings Pick
-                            </span>
-                            <span className="font-extrabold text-[#002970] text-sm">
-                              {bestOffer.bankName} • {bestOffer.cardType}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] font-semibold text-emerald-800 uppercase block tracking-wider">
-                              Net Shopper Savings
-                            </span>
-                            <span className="text-xl font-black text-[#00B86B] tabular-nums">
-                              {formatInr(bestOffer.shopperNetSavings)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Financial Math Formula Ribbon */}
-                        <div className="rounded-xl bg-white border border-emerald-200 p-3 text-xs">
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                            AI Unlocked Financial Breakdown
+                  <CardContent className="space-y-4">
+                    {selectedSavings ? (
+                      <>
+                        {/* Concise Shopper-Friendly AI Explanation */}
+                        <div className="rounded-2xl bg-sky-50 border border-sky-200 p-4 text-sm text-[#002970] leading-relaxed">
+                          <p className="font-bold text-xs uppercase tracking-wider text-sky-700 mb-1 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" />
+                            AI Explanation for {selectedSavings.bankName} Offer
                           </p>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                            <div className="rounded-lg bg-slate-50 p-2">
-                              <span className="text-slate-400 block text-[10px]">Listed Price</span>
-                              <strong className="text-slate-800 text-sm tabular-nums">
-                                {formatInr(bestOffer.originalPrice)}
+                          {generateShopperExplanation(
+                            analysisResult.product,
+                            selectedSavings,
+                            matchingParsedOffer
+                          )}
+                        </div>
+
+                        {/* Selected Offer Financial Spotlight */}
+                        <div className="rounded-2xl border-2 border-emerald-400 bg-gradient-to-br from-emerald-50/90 via-teal-50/40 to-white p-4 space-y-3 shadow-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-100 pb-2.5">
+                            <div>
+                              <span className="text-xs font-extrabold uppercase tracking-wide text-emerald-800 block">
+                                Active Selected Bank Offer
+                              </span>
+                              <span className="font-black text-[#002970] text-base">
+                                {selectedSavings.bankName} • {selectedSavings.cardType}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-semibold text-emerald-800 uppercase block tracking-wider">
+                                Net Shopper Savings
+                              </span>
+                              <span className="text-xl font-black text-[#00B86B] tabular-nums">
+                                {formatInr(selectedSavings.shopperNetSavings)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Financial Math Formula Ribbon for Selected Offer */}
+                          <div className="rounded-xl bg-white border border-emerald-200 p-3 text-xs">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                              Financial Breakdown ({selectedSavings.bankName})
+                            </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                              <div className="rounded-lg bg-slate-50 p-2 border border-slate-100">
+                                <span className="text-slate-400 block text-[10px]">Listed Price</span>
+                                <strong className="text-slate-800 text-sm tabular-nums">
+                                  {formatInr(selectedSavings.originalPrice)}
+                                </strong>
+                              </div>
+                              <div className="rounded-lg bg-emerald-50 p-2 text-emerald-800 border border-emerald-100">
+                                <span className="text-emerald-600 block text-[10px]">Bank Discount</span>
+                                <strong className="text-emerald-700 text-sm tabular-nums">
+                                  −{formatInr(selectedSavings.actualDiscount)}
+                                </strong>
+                              </div>
+                              <div className="rounded-lg bg-sky-50 p-2 text-[#002970] border border-sky-100">
+                                <span className="text-sky-600 block text-[10px]">PerkLink Outlay</span>
+                                <strong className="text-[#002970] text-sm tabular-nums">
+                                  {formatInr(selectedSavings.shopperFinalAmount)}
+                                </strong>
+                              </div>
+                              <div className="rounded-lg bg-[#00B86B] text-white p-2">
+                                <span className="text-emerald-100 block text-[10px]">You Save</span>
+                                <strong className="text-white text-sm tabular-nums">
+                                  {formatInr(selectedSavings.shopperNetSavings)}
+                                </strong>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-2 text-center">
+                              Includes ₹{selectedSavings.providerReward} provider reward + ₹{selectedSavings.perkLinkFee} facilitation fee in one-time mandate
+                            </p>
+                          </div>
+
+                          {/* Structured Offer Conditions Grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs pt-1">
+                            <div className="rounded-xl bg-white border border-slate-200 p-2.5">
+                              <span className="text-slate-400 block text-[10px] uppercase font-bold flex items-center gap-1">
+                                <Percent className="h-3 w-3 text-amber-500" />
+                                Discount Rate
+                              </span>
+                              <strong className="text-slate-900 text-xs">
+                                {selectedSavings.discountPercentage}% Instant
                               </strong>
                             </div>
-                            <div className="rounded-lg bg-emerald-50 p-2 text-emerald-800">
-                              <span className="text-emerald-600 block text-[10px]">Bank Discount</span>
-                              <strong className="text-emerald-700 text-sm tabular-nums">
-                                −{formatInr(bestOffer.actualDiscount)}
+                            <div className="rounded-xl bg-white border border-slate-200 p-2.5">
+                              <span className="text-slate-400 block text-[10px] uppercase font-bold flex items-center gap-1">
+                                <Zap className="h-3 w-3 text-emerald-600" />
+                                Max Cap
+                              </span>
+                              <strong className="text-slate-900 text-xs">
+                                {formatInr(selectedSavings.maxDiscount)}
                               </strong>
                             </div>
-                            <div className="rounded-lg bg-sky-50 p-2 text-[#002970]">
-                              <span className="text-sky-600 block text-[10px]">PerkLink Outlay</span>
-                              <strong className="text-[#002970] text-sm tabular-nums">
-                                {formatInr(bestOffer.shopperFinalAmount)}
+                            <div className="rounded-xl bg-white border border-slate-200 p-2.5">
+                              <span className="text-slate-400 block text-[10px] uppercase font-bold flex items-center gap-1">
+                                <CreditCard className="h-3 w-3 text-sky-600" />
+                                Min Purchase
+                              </span>
+                              <strong className="text-slate-900 text-xs">
+                                {formatInr(matchingParsedOffer?.minimum_transaction || 10000)}
                               </strong>
                             </div>
-                            <div className="rounded-lg bg-[#00B86B] text-white p-2">
-                              <span className="text-emerald-100 block text-[10px]">You Save</span>
-                              <strong className="text-white text-sm tabular-nums">
-                                {formatInr(bestOffer.shopperNetSavings)}
+                            <div className="rounded-xl bg-white border border-slate-200 p-2.5">
+                              <span className="text-slate-400 block text-[10px] uppercase font-bold flex items-center gap-1">
+                                <ShieldCheck className="h-3 w-3 text-blue-600" />
+                                EMI Policy
+                              </span>
+                              <strong className="text-slate-900 text-xs">
+                                {matchingParsedOffer?.emi_eligible
+                                  ? 'EMI Eligible'
+                                  : 'Non-EMI Full Swipe Only'}
+                              </strong>
+                            </div>
+                            <div className="rounded-xl bg-white border border-slate-200 p-2.5">
+                              <span className="text-slate-400 block text-[10px] uppercase font-bold flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-purple-600" />
+                                Offer Validity
+                              </span>
+                              <strong className="text-slate-900 text-xs">
+                                {matchingParsedOffer?.valid_until || '31 Dec 2026'}
+                              </strong>
+                            </div>
+                            <div className="rounded-xl bg-white border border-slate-200 p-2.5">
+                              <span className="text-slate-400 block text-[10px] uppercase font-bold flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-indigo-600" />
+                                Offer Type
+                              </span>
+                              <strong className="text-slate-900 text-xs capitalize">
+                                {(matchingParsedOffer?.offer_type || 'instant_discount').replace('_', ' ')}
                               </strong>
                             </div>
                           </div>
-                          <p className="text-[10px] text-slate-500 mt-2 text-center">
-                            Includes ₹{bestOffer.providerReward} provider reward + ₹{bestOffer.perkLinkFee} facilitation fee in one-time mandate
-                          </p>
-                        </div>
 
-                        {/* Extracted AI Rule Tags */}
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                          <span className="inline-flex items-center gap-1 rounded-md bg-white border border-slate-200 px-2 py-0.5 text-slate-700 font-medium">
-                            <Zap className="h-3 w-3 text-amber-500" />
-                            {bestOffer.discountPercentage}% Instant Discount (up to ₹{bestOffer.maxDiscount.toLocaleString('en-IN')})
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded-md bg-white border border-slate-200 px-2 py-0.5 text-slate-700 font-medium">
-                            <Check className="h-3 w-3 text-emerald-600" />
-                            Cart meets ₹10,000 threshold
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded-md bg-white border border-slate-200 px-2 py-0.5 text-slate-700 font-medium">
-                            <ShieldCheck className="h-3 w-3 text-blue-600" />
-                            Full swipe non-EMI
-                          </span>
+                          {/* Exclusions & Additional Conditions */}
+                          {matchingParsedOffer?.exclusions && matchingParsedOffer.exclusions.length > 0 && (
+                            <div className="rounded-xl bg-white border border-slate-200 p-2.5 text-[11px] text-slate-600 space-y-1">
+                              <span className="font-bold text-slate-800 block text-[10px] uppercase">
+                                Offer Conditions &amp; Exclusions
+                              </span>
+                              <p>{matchingParsedOffer.exclusions.join(' • ')}</p>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* All Applicable Bank Offers Discovered by AI */}
-                  <div className="space-y-3 pt-1">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-extrabold text-sm text-[#002970] flex items-center gap-1.5">
-                          <Tag className="h-4 w-4 text-[#00BAF2]" />
-                          All Applicable Bank Offers Identified by AI
+                      </>
+                    ) : (
+                      <div className="rounded-2xl bg-amber-50/80 border border-amber-200 p-6 text-center space-y-2">
+                        <Bot className="h-8 w-8 text-amber-600 mx-auto" />
+                        <h3 className="font-bold text-slate-900 text-sm">
+                          No eligible bank offers were found for this product.
                         </h3>
-                        <p className="text-xs text-slate-500">
-                          PerkLink AI evaluated every card promotion against this product and cart:
+                        <p className="text-xs text-slate-600 max-w-sm mx-auto">
+                          None of the promotions on this merchant satisfy minimum transaction thresholds or cardholder eligibility for this purchase.
                         </p>
                       </div>
-                      <span className="text-xs font-bold text-slate-600">
-                        {analysisResult.savingsComparisons.length} Evaluated
-                      </span>
-                    </div>
+                    )}
+                  </CardContent>
+                </div>
 
-                    <div className="grid gap-2.5">
-                      {analysisResult.savingsComparisons.map((offer) => {
-                        const isEligible = offer.eligibilityStatus === 'ELIGIBLE';
-                        const isTop = offer.isRecommended;
+                <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 rounded-b-2xl flex items-center justify-between text-xs text-slate-600">
+                  <span>Selected Card Provider Channel:</span>
+                  <span className="font-extrabold text-[#002970]">
+                    {selectedSavings ? `${selectedSavings.bankName} Network` : 'None Available'}
+                  </span>
+                </div>
+              </Card>
+            </div>
 
-                        return (
-                          <div
-                            key={offer.offerId}
-                            className={`rounded-2xl border p-3.5 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                              isTop
-                                ? 'border-[#00B86B] bg-emerald-50/40 shadow-xs'
-                                : isEligible
-                                ? 'border-slate-200 bg-white hover:border-sky-300'
-                                : 'border-slate-200 bg-slate-50/60 opacity-80'
-                            }`}
-                          >
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-black text-[#002970] text-sm">
-                                  {offer.bankName}
+            {/* Bottom: ALL APPLICABLE BANK OFFERS IDENTIFIED BY AI (Full-Width Box) */}
+            <Card className="w-full">
+              <CardHeader className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100">
+                <div>
+                  <h2 className="font-extrabold text-base text-[#002970] flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-[#00BAF2]" />
+                    All Applicable Bank Offers Identified by AI
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Only confirmed eligible promotions are displayed. Select an offer below to update Section B and your savings plan:
+                  </p>
+                </div>
+                <Badge variant={eligibleOffers.length > 0 ? 'blue' : 'amber'}>
+                  {eligibleOffers.length} {eligibleOffers.length === 1 ? 'Eligible Offer' : 'Eligible Offers'}
+                </Badge>
+              </CardHeader>
+
+              <CardContent className="space-y-4 pt-4">
+                {eligibleOffers.length > 0 ? (
+                  <div className="grid gap-3">
+                    {eligibleOffers.map((offer) => {
+                      const isSelected = offer.offerId === selectedSavings?.offerId;
+                      const isTop = offer.isRecommended;
+
+                      const matchingOfferDetails = analysisResult.aiAnalysis.parsedOffers.find(
+                        (p) =>
+                          p.offerId === offer.offerId ||
+                          p.bank.toLowerCase() === offer.bankName.toLowerCase()
+                      );
+
+                      return (
+                        <div
+                          key={offer.offerId}
+                          onClick={() => handleSelectOffer(offer.offerId)}
+                          className={`rounded-2xl border p-4 transition cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                            isSelected
+                              ? 'border-2 border-[#002970] bg-sky-50/70 shadow-sm ring-1 ring-[#002970]/15'
+                              : 'border-slate-200 bg-white hover:border-sky-300 hover:shadow-xs'
+                          }`}
+                        >
+                          <div className="space-y-1.5 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-black text-[#002970] text-sm">
+                                {offer.bankName}
+                              </span>
+                              <span className="text-xs font-semibold text-slate-600">
+                                • {offer.cardType}
+                              </span>
+                              {isTop && (
+                                <Badge variant="blue">
+                                  <Award className="h-3 w-3" />
+                                  Highest Savings
+                                </Badge>
+                              )}
+                              <Badge variant="green">
+                                Eligible
+                              </Badge>
+                              {isSelected && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[#002970] px-2.5 py-0.5 text-[11px] font-extrabold text-white">
+                                  <Check className="h-3 w-3 text-[#00BAF2]" />
+                                  Selected
                                 </span>
-                                <span className="text-xs font-semibold text-slate-600">
-                                  • {offer.cardType}
-                                </span>
-                                {isTop && (
-                                  <span className="text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                                    Highest Savings
-                                  </span>
-                                )}
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                    isEligible
-                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                      : offer.eligibilityStatus === 'POTENTIALLY_ELIGIBLE'
-                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                      : 'bg-slate-100 text-slate-600'
-                                  }`}
-                                >
-                                  {offer.eligibilityStatus.replace('_', ' ')}
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-700 leading-snug">
-                                {offer.offerTitle}
-                              </p>
-                              <p className="text-[11px] text-slate-500">
-                                {offer.eligibilityReason}
-                              </p>
+                              )}
                             </div>
+                            <p className="text-xs font-bold text-slate-900 leading-snug">
+                              {offer.offerTitle}
+                            </p>
+                            <p className="text-[11px] text-slate-500">{offer.eligibilityReason}</p>
 
-                            <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
-                              <div className="text-left sm:text-right">
-                                <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                                  Discount Value
-                                </span>
-                                <span className="font-extrabold text-sm text-[#002970] tabular-nums">
-                                  {formatInr(offer.actualDiscount)} off
-                                </span>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-xs font-black text-[#00B86B] tabular-nums">
-                                  Save {formatInr(offer.shopperNetSavings)} Net
-                                </span>
-                              </div>
+                            {/* Relevant Offer Conditions */}
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-600">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+                                <CreditCard className="h-3 w-3 text-slate-500" />
+                                Min spend {formatInr(matchingOfferDetails?.minimum_transaction || offer.originalPrice >= 25000 ? 10000 : 10000)}
+                              </span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+                                <ShieldCheck className="h-3 w-3 text-blue-600" />
+                                {matchingOfferDetails?.emi_eligible ? 'EMI Eligible' : 'Non-EMI Full Swipe'}
+                              </span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+                                <Clock className="h-3 w-3 text-purple-600" />
+                                Valid through {matchingOfferDetails?.valid_until || '31 Dec 2026'}
+                              </span>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+
+                          <div className="flex items-center justify-between md:justify-end gap-5 shrink-0 tabular-nums border-t md:border-t-0 pt-2.5 md:pt-0 border-slate-100">
+                            <div className="text-left md:text-right space-y-0.5">
+                              <p className="text-[10px] uppercase font-bold text-slate-400">
+                                Discount Value
+                              </p>
+                              <p className="font-extrabold text-sm text-[#002970]">
+                                −{formatInr(offer.actualDiscount)} off
+                              </p>
+                              <p className="text-xs font-black text-[#00B86B]">
+                                Save {formatInr(offer.shopperNetSavings)} Net
+                              </p>
+                            </div>
+
+                            <div>
+                              {isSelected ? (
+                                <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#002970] text-white text-xs font-bold shadow-xs">
+                                  <Check className="h-4 w-4 text-[#00BAF2]" />
+                                  Selected
+                                </span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectOffer(offer.offerId);
+                                  }}
+                                >
+                                  Select Offer
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-
-                  {/* AI Rule Deconstruction & Technical Schema Inspector */}
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#002970] flex items-center gap-1.5">
-                        <Layers className="h-3.5 w-3.5 text-[#00BAF2]" />
-                        AI Natural-Language Rule Deconstruction
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowRawSchema((prev) => !prev)}
-                        className="text-xs font-semibold text-[#002970] hover:text-[#00BAF2] underline cursor-pointer"
-                      >
-                        {showRawSchema ? 'Hide Technical Schema' : 'Inspect JSON Schema'}
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-600">
-                      The AI model extracted unstructured offer clauses into strict JSON constraints for instant validation against cart values.
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-8 text-center space-y-2">
+                    <Tag className="h-8 w-8 text-slate-400 mx-auto" />
+                    <p className="font-bold text-slate-800 text-sm">
+                      No eligible bank offers were found for this product.
                     </p>
+                    <p className="text-xs text-slate-500">
+                      Try checking back later or test with a product that meets bank transaction requirements.
+                    </p>
+                  </div>
+                )}
 
-                    {showRawSchema && (
-                      <pre className="rounded-xl bg-slate-900 text-emerald-300 p-3 text-xs overflow-x-auto font-mono max-h-56 mt-2">
-                        {JSON.stringify(analysisResult.aiAnalysis.parsedOffers[0], null, 2)}
-                      </pre>
+                {/* Bottom Action Footer */}
+                <div className="pt-4 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100">
+                  <div className="text-xs text-slate-600">
+                    {selectedSavings ? (
+                      <>
+                        <span>Chosen Bank Offer: </span>
+                        <strong className="text-[#002970] font-bold">
+                          {selectedSavings.bankName} ({selectedSavings.cardType})
+                        </strong>
+                        <span className="text-slate-400 mx-1.5">•</span>
+                        <span>Total Mandate Outlay: </span>
+                        <strong className="text-slate-900 font-bold tabular-nums">
+                          {formatInr(selectedSavings.shopperFinalAmount)}
+                        </strong>
+                        <span className="text-slate-400 mx-1.5">•</span>
+                        <span className="text-[#00B86B] font-bold">
+                          Save {formatInr(selectedSavings.shopperNetSavings)} Net
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-slate-500 font-medium">
+                        No eligible bank offers available for this transaction.
+                      </span>
                     )}
                   </div>
 
-                  <div className="pt-2 flex justify-end">
-                    <Button
-                      size="lg"
-                      variant="primary"
-                      onClick={() =>
-                        router.push(
-                          `/shopper/offers?txId=${analysisResult.transactionId}`
-                        )
-                      }
-                    >
-                      <Sparkles className="h-4 w-4 text-[#00BAF2]" />
-                      View AI Savings Advisor &amp; Provider Match
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                  <Button
+                    size="lg"
+                    variant="paytm"
+                    disabled={eligibleOffers.length === 0 || !selectedOfferId || navigating}
+                    onClick={handleProceed}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {navigating
+                      ? 'Saving Selection...'
+                      : 'View AI Savings Advisor & Provider Match'}
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>

@@ -124,24 +124,92 @@ export function projectTransactionForRole(
 
   const maskedDest = maskDestination(tx);
   const isProvider = role === 'PROVIDER_A';
+  const isShopper = role === 'SHOPPER_B';
 
   // Strict privacy guard: NEVER send Class B shipping address, phone, or delivery instructions to Class A
   const { deliveryInfo, ...txWithoutDelivery } = tx;
 
+  // Mask Class A identities for Class B shopper (Provider 01, Provider 02, etc.)
+  const projectedMatches = isShopper
+    ? providerMatches.map((m, idx) => {
+        const maskedLabel = `Provider ${String(idx + 1).padStart(2, '0')}`;
+        return {
+          ...m,
+          providerAlias: maskedLabel,
+          providerId: `prov-masked-${String(idx + 1).padStart(2, '0')}`,
+          cardMetadataId: `card-masked-${String(idx + 1).padStart(2, '0')}`,
+          id: `pm-masked-${tx.id}-${String(idx + 1).padStart(2, '0')}`,
+          aiRationale: m.aiRationale.replace(/^[^\s]+ holds/, `${maskedLabel} holds`),
+        };
+      })
+    : providerMatches;
+
+  let shopperProviderLabel = 'Verified Card Provider';
+  const matchIdx = providerMatches.findIndex((m) => m.providerId === tx.providerId);
+  if (matchIdx >= 0) {
+    shopperProviderLabel = `Provider ${String(matchIdx + 1).padStart(2, '0')}`;
+  }
+
+  const projectedProviderProfile =
+    isShopper && providerProfile
+      ? {
+          ...providerProfile,
+          id: `prov-masked-${matchIdx >= 0 ? String(matchIdx + 1).padStart(2, '0') : '01'}`,
+          displayAlias: shopperProviderLabel,
+          userId: 'usr-provider-masked',
+        }
+      : providerProfile;
+
+  const projectedCardMetadata =
+    isShopper && cardMetadata
+      ? {
+          ...cardMetadata,
+          id: `card-masked-${matchIdx >= 0 ? String(matchIdx + 1).padStart(2, '0') : '01'}`,
+          providerId: `prov-masked-${matchIdx >= 0 ? String(matchIdx + 1).padStart(2, '0') : '01'}`,
+        }
+      : cardMetadata;
+
+  const projectedPurchaseRequest =
+    isShopper && purchaseRequest
+      ? {
+          ...purchaseRequest,
+          providerId: `prov-masked-${matchIdx >= 0 ? String(matchIdx + 1).padStart(2, '0') : '01'}`,
+          cardMetadataId: `card-masked-${matchIdx >= 0 ? String(matchIdx + 1).padStart(2, '0') : '01'}`,
+        }
+      : purchaseRequest;
+
+  let sanitizedExplanation = tx.aiRecommendationExplanation;
+  if (isShopper && sanitizedExplanation) {
+    sanitizedExplanation = sanitizedExplanation.replace(
+      /Arjun M\.|Arjun|Neha K\.|Neha|Priya N\.|Priya|Vikram R\.|Vikram|Rohit V\.|Rohit|Ananya I\.|Ananya/g,
+      'Provider 01'
+    );
+  }
+
   return {
     transaction: {
       ...txWithoutDelivery,
+      ...(isShopper && tx.providerId
+        ? {
+            providerId: `prov-masked-${matchIdx >= 0 ? String(matchIdx + 1).padStart(2, '0') : '01'}`,
+            aiRecommendationExplanation: sanitizedExplanation,
+          }
+        : {}),
+      ...(isShopper && sanitizedExplanation ? { aiRecommendationExplanation: sanitizedExplanation } : {}),
       ...(isProvider ? {} : { deliveryInfo }),
       maskedDestination: maskedDest,
     },
     product,
     offer,
     aiAnalysis,
-    savingsComparisons,
-    providerMatches,
-    purchaseRequest,
-    providerProfile,
-    cardMetadata,
+    savingsComparisons:
+      isShopper
+        ? savingsComparisons.filter((s) => s.eligibilityStatus === 'ELIGIBLE')
+        : savingsComparisons,
+    providerMatches: projectedMatches,
+    purchaseRequest: projectedPurchaseRequest,
+    providerProfile: projectedProviderProfile,
+    cardMetadata: projectedCardMetadata,
     upiMandate,
     merchantOrder: merchantOrder
       ? {

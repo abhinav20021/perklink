@@ -260,6 +260,10 @@ export interface PurchaseRequest {
   providerId: string;
   cardMetadataId: string;
   offeredReward: number;
+  offerId?: string;
+  bankName?: string;
+  cardType?: string;
+  discountAmount?: number;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
   respondedAt?: string;
   rejectionReason?: string;
@@ -412,6 +416,17 @@ export interface Transaction {
   deliveryInfo?: DeliveryInfo;
   paymentSimulation?: PaymentSimulationRecord;
   aiRecommendationExplanation?: string;
+  selectedOfferSnapshot?: {
+    offerId: string;
+    bankName: string;
+    cardType: string;
+    offerTitle: string;
+    discountPercentage: number;
+    maxDiscount: number;
+    actualDiscount: number;
+    cardChargeAmount: number;
+    shopperNetSavings: number;
+  };
   flaggedForMismatch?: boolean;
   mismatchReason?: string;
   createdAt: string;

@@ -87,22 +87,30 @@ export async function POST(req: Request) {
       const transactionId = `PLK-2026-${nextNum}`;
 
       // Deterministic backend savings calculation across all DB offers
-      const savingsComparisons = evaluateAllOffers(
+      const allSavingsComparisons = evaluateAllOffers(
         product,
         db.bankOffers,
         transactionId,
         db.config,
         { isEmiPurchase: body.isEmiPurchase }
       );
-      db.savingsComparisons.push(...savingsComparisons);
+      // Retain all evaluated comparisons internally
+      db.savingsComparisons.push(...allSavingsComparisons);
+
+      // Filter ONLY verified ELIGIBLE offers for shopper-facing flow
+      const eligibleSavingsComparisons = allSavingsComparisons.filter(
+        (s) => s.eligibilityStatus === 'ELIGIBLE'
+      );
 
       const recommendedSavings =
-        savingsComparisons.find((s) => s.isRecommended) ?? savingsComparisons[0];
+        eligibleSavingsComparisons.find((s) => s.isRecommended) ??
+        eligibleSavingsComparisons[0] ??
+        null;
       const recommendedOffer = recommendedSavings
         ? db.bankOffers.find((o) => o.id === recommendedSavings.offerId)
         : undefined;
 
-      // Rank providers for the top recommended offer right away so the Recommendation screen has rich data
+      // Rank providers for the top recommended eligible offer right away
       const providerMatches =
         recommendedOffer && recommendedSavings
           ? rankProvidersForOffer({
@@ -121,7 +129,7 @@ export async function POST(req: Request) {
         recommendedSavings && providerMatches.length >= 0
           ? await generateRecommendationExplanation({
               product,
-              savingsComparisons,
+              savingsComparisons: eligibleSavingsComparisons,
               selectedOffer: recommendedSavings,
               providerMatches,
             })
@@ -135,7 +143,11 @@ export async function POST(req: Request) {
         usedFallback: aiOutput.usedFallback,
         fallbackReason: aiOutput.fallbackReason,
         productUnderstanding: aiOutput.productUnderstanding,
-        parsedOffers: aiOutput.parsedOffers,
+        parsedOffers: aiOutput.parsedOffers.filter((po) =>
+          po.offerId
+            ? eligibleSavingsComparisons.some((e) => e.offerId === po.offerId)
+            : true
+        ),
         shopperExplanation: aiOutput.shopperExplanation,
         uncertainties: aiOutput.uncertainties,
         modelUsed: aiOutput.modelUsed,
@@ -148,13 +160,32 @@ export async function POST(req: Request) {
         status: 'PRODUCT_ANALYSED',
         shopperId: session.userId,
         productId: product.id,
+        offerId: recommendedOffer ? recommendedOffer.id : undefined,
         listedPrice: product.listedPrice,
-        bankDiscount: 0,
-        cardChargeAmount: product.listedPrice,
-        providerReward: db.config.defaultProviderRewardInr,
-        platformFee: db.config.defaultPlatformFeeInr,
-        mandateAmount: product.listedPrice,
-        shopperSavings: 0,
+        bankDiscount: recommendedSavings ? recommendedSavings.actualDiscount : 0,
+        cardChargeAmount: recommendedSavings
+          ? recommendedSavings.cardChargeAmount
+          : product.listedPrice,
+        providerReward: recommendedSavings ? db.config.defaultProviderRewardInr : 0,
+        platformFee: recommendedSavings ? db.config.defaultPlatformFeeInr : 0,
+        mandateAmount: recommendedSavings
+          ? recommendedSavings.shopperFinalAmount
+          : product.listedPrice,
+        shopperSavings: recommendedSavings ? recommendedSavings.shopperNetSavings : 0,
+        selectedOfferSnapshot:
+          recommendedOffer && recommendedSavings
+            ? {
+                offerId: recommendedOffer.id,
+                bankName: recommendedOffer.bankName,
+                cardType: recommendedOffer.cardType,
+                offerTitle: recommendedOffer.offerTitle,
+                discountPercentage: recommendedSavings.discountPercentage,
+                maxDiscount: recommendedSavings.maxDiscount,
+                actualDiscount: recommendedSavings.actualDiscount,
+                cardChargeAmount: recommendedSavings.cardChargeAmount,
+                shopperNetSavings: recommendedSavings.shopperNetSavings,
+              }
+            : undefined,
         aiRecommendationExplanation: aiRec?.providerRecommendationReason,
         createdAt: nowIso,
         updatedAt: nowIso,
@@ -172,19 +203,32 @@ export async function POST(req: Request) {
         metadata: {
           usedFallback: aiOutput.usedFallback,
           modelUsed: aiOutput.modelUsed,
-          eligibleOffersCount: savingsComparisons.filter(
-            (s) => s.eligibilityStatus === 'ELIGIBLE'
-          ).length,
+          totalEvaluatedOffers: allSavingsComparisons.length,
+          eligibleOffersCount: eligibleSavingsComparisons.length,
         },
         createdAt: nowIso,
       });
+
+      const projectedMatches =
+        session.role === 'SHOPPER_B'
+          ? providerMatches.map((m, idx) => {
+              const maskedLabel = `Provider ${String(idx + 1).padStart(2, '0')}`;
+              return {
+                ...m,
+                providerAlias: maskedLabel,
+                providerId: `prov-masked-${String(idx + 1).padStart(2, '0')}`,
+                cardMetadataId: `card-masked-${String(idx + 1).padStart(2, '0')}`,
+                id: `pm-masked-${transactionId}-${String(idx + 1).padStart(2, '0')}`,
+              };
+            })
+          : providerMatches;
 
       return {
         transaction: newTx,
         product,
         aiAnalysis,
-        savingsComparisons,
-        providerMatches,
+        savingsComparisons: eligibleSavingsComparisons, // Only eligible offers returned to shopper!
+        providerMatches: projectedMatches,
         aiRecommendation: aiRec,
       };
     });
