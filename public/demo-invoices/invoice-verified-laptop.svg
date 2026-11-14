@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360" fill="none">
+  <rect width="600" height="360" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+  <rect width="600" height="64" rx="12" fill="#002970"/>
+  <text x="28" y="40" fill="#FFFFFF" font-family="system-ui, sans-serif" font-size="20" font-weight="700">FLIPKART TAX INVOICE (DEMO)</text>
+  <text x="572" y="40" text-anchor="end" fill="#00BAF2" font-family="system-ui, sans-serif" font-size="13" font-weight="600">SIMULATION DOCUMENT</text>
+  <text x="28" y="102" fill="#475569" font-family="system-ui, sans-serif" font-size="13">Invoice No: <tspan fill="#0F172A" font-weight="700">FK-INV-2026-884920</tspan></text>
+  <text x="28" y="126" fill="#475569" font-family="system-ui, sans-serif" font-size="13">Merchant Order ID: <tspan fill="#0F172A" font-weight="700">MER-FK-884920</tspan></text>
+  <text x="28" y="150" fill="#475569" font-family="system-ui, sans-serif" font-size="13">Purchase Date: <tspan fill="#0F172A" font-weight="700">2026-11-12</tspan></text>
+  <line x1="28" y1="176" x2="572" y2="176" stroke="#E2E8F0"/>
+  <text x="28" y="208" fill="#0F172A" font-family="system-ui, sans-serif" font-size="15" font-weight="700">ASUS Vivobook 16 Laptop (16GB RAM, 512GB SSD)</text>
+  <text x="28" y="232" fill="#64748B" font-family="system-ui, sans-serif" font-size="12">Listed Price: ₹48,999  |  SBI Instant Discount: -₹2,000  |  GST (18% incl.): ₹7,169</text>
+  <rect x="28" y="262" width="544" height="62" rx="10" fill="#ECFDF5" stroke="#6EE7B7"/>
+  <text x="48" y="299" fill="#065F46" font-family="system-ui, sans-serif" font-size="16" font-weight="700">Net Card Charge Paid (SBI •••• 4387): ₹46,999</text>
+  <text x="552" y="299" text-anchor="end" fill="#059669" font-family="system-ui, sans-serif" font-size="13" font-weight="700">VERIFIED MATCH</text>
+</svg>

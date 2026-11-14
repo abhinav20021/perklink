@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 280" fill="none">
+  <rect width="400" height="280" rx="20" fill="#F0F7FF"/>
+  <rect x="70" y="42" width="260" height="162" rx="12" fill="#0F172A" stroke="#334155" stroke-width="4"/>
+  <rect x="82" y="54" width="236" height="138" rx="6" fill="url(#scr)"/>
+  <path d="M44 208H356L372 224C375 227 373 232 368 232H32C27 232 25 227 28 224L44 208Z" fill="#CBD5E1"/>
+  <rect x="165" y="212" width="70" height="6" rx="3" fill="#94A3B8"/>
+  <circle cx="200" cy="48" r="2.5" fill="#475569"/>
+  <text x="200" y="118" text-anchor="middle" fill="#FFFFFF" font-family="system-ui, sans-serif" font-size="18" font-weight="700">ASUS Vivobook 16</text>
+  <text x="200" y="142" text-anchor="middle" fill="#BAE6FD" font-family="system-ui, sans-serif" font-size="12">16GB RAM • 512GB NVMe SSD • Intel i5</text>
+  <rect x="148" y="156" width="104" height="22" rx="11" fill="#00BAF2"/>
+  <text x="200" y="171" text-anchor="middle" fill="#002970" font-family="system-ui, sans-serif" font-size="11" font-weight="700">₹48,999 Listed</text>
+  <defs>
+    <linearGradient id="scr" x1="82" y1="54" x2="318" y2="192" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#002970"/>
+      <stop offset="1" stop-color="#0369A1"/>
+    </linearGradient>
+  </defs>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 280" fill="none">
+  <rect width="400" height="280" rx="20" fill="#F0FDF4"/>
+  <path d="M120 150C120 96 155 58 200 58C245 58 280 96 280 150" stroke="#1E293B" stroke-width="16" stroke-linecap="round"/>
+  <rect x="102" y="138" width="38" height="72" rx="18" fill="#0F172A"/>
+  <rect x="260" y="138" width="38" height="72" rx="18" fill="#0F172A"/>
+  <rect x="132" y="144" width="12" height="60" rx="6" fill="#475569"/>
+  <rect x="256" y="144" width="12" height="60" rx="6" fill="#475569"/>
+  <text x="200" y="156" text-anchor="middle" fill="#0F172A" font-family="system-ui, sans-serif" font-size="15" font-weight="700">Sony WH-1000XM5</text>
+  <text x="200" y="176" text-anchor="middle" fill="#475569" font-family="system-ui, sans-serif" font-size="11">Adaptive ANC • 30h Battery</text>
+  <rect x="155" y="192" width="90" height="22" rx="11" fill="#002970"/>
+  <text x="200" y="207" text-anchor="middle" fill="#FFFFFF" font-family="system-ui, sans-serif" font-size="11" font-weight="700">₹26,990</text>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360" fill="none">
+  <rect width="600" height="360" rx="12" fill="#FFFFFF" stroke="#FCA5A5" stroke-width="2"/>
+  <rect width="600" height="64" rx="12" fill="#7F1D1D"/>
+  <text x="28" y="40" fill="#FFFFFF" font-family="system-ui, sans-serif" font-size="20" font-weight="700">MERCHANT INVOICE (MISMATCH DEMO)</text>
+  <text x="28" y="102" fill="#475569" font-family="system-ui, sans-serif" font-size="13">Invoice No: <tspan fill="#0F172A" font-weight="700">INV-ERR-99012</tspan></text>
+  <text x="28" y="126" fill="#475569" font-family="system-ui, sans-serif" font-size="13">Merchant Order ID: <tspan fill="#B91C1C" font-weight="700">MER-WRONG-0001</tspan></text>
+  <text x="28" y="150" fill="#475569" font-family="system-ui, sans-serif" font-size="13">Merchant: <tspan fill="#0F172A" font-weight="700">Unverified Seller Store</tspan></text>
+  <line x1="28" y1="176" x2="572" y2="176" stroke="#E2E8F0"/>
+  <text x="28" y="208" fill="#0F172A" font-family="system-ui, sans-serif" font-size="15" font-weight="700">Item: Generic Electronics Bundle</text>
+  <rect x="28" y="262" width="544" height="62" rx="10" fill="#FEF2F2" stroke="#FCA5A5"/>
+  <text x="48" y="299" fill="#991B1B" font-family="system-ui, sans-serif" font-size="16" font-weight="700">Amount Charged: ₹41,200 (Expected ₹46,999)</text>
+  <text x="552" y="299" text-anchor="end" fill="#DC2626" font-family="system-ui, sans-serif" font-size="13" font-weight="700">MISMATCH</text>
+</svg>
