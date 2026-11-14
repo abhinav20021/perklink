@@ -3,6 +3,8 @@ import { handleApiError } from '@/lib/api-response';
 import { getRequiredSession } from '@/lib/auth/session';
 import { readDatabase } from '@/lib/db/store';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     await getRequiredSession(['ADMIN_OPS', 'SHOPPER_B', 'PROVIDER_A']);

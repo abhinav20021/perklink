@@ -8,6 +8,8 @@ import {
   readDatabase,
 } from '@/lib/db/store';
 
+export const dynamic = 'force-dynamic';
+
 const UpdateProviderSettingsSchema = z.object({
   availabilityStatus: z.enum(['ONLINE', 'BUSY', 'OFFLINE']).optional(),
   consentGranted: z.boolean().optional(),

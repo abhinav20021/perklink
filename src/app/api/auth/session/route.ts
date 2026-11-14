@@ -6,6 +6,8 @@ import {
 } from '@/lib/auth/session';
 import { readDatabase } from '@/lib/db/store';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const db = await readDatabase();
   const active = (await getActiveSession()) ?? buildSessionForEmail('shopper@perklink.demo', db);

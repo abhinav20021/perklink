@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { createSeedDatabase } from './seed';
 import type {
@@ -8,25 +9,65 @@ import type {
   UserRole,
 } from './types';
 
-const DATA_DIR = path.join(process.cwd(), '.data');
+// Detect Serverless / Vercel environment where process.cwd() is read-only (/var/task)
+const isServerless = Boolean(
+  process.env.VERCEL ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  process.env.LAMBDA_TASK_ROOT
+);
+
+// In Vercel / serverless functions, os.tmpdir() (/tmp) is the only writable directory.
+// In local development or standalone server, we use process.cwd()/.data.
+const DATA_DIR = isServerless
+  ? path.join(os.tmpdir(), 'perklink-data')
+  : path.join(process.cwd(), '.data');
 const DB_PATH = path.join(DATA_DIR, 'perklink-db.json');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 
+declare global {
+  var __perklink_db__: PerkLinkDatabase | undefined;
+}
+
 let writeLock: Promise<void> = Promise.resolve();
 
-async function ensureDataDirs(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.mkdir(UPLOADS_DIR, { recursive: true });
+async function ensureDataDirs(): Promise<boolean> {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.mkdir(UPLOADS_DIR, { recursive: true });
+    return true;
+  } catch (err) {
+    console.warn('Filesystem directory creation skipped (using in-memory store):', err);
+    return false;
+  }
 }
 
 export async function readDatabase(): Promise<PerkLinkDatabase> {
-  await ensureDataDirs();
+  // 1. Fast in-memory cache check (persists across warm serverless requests)
+  if (globalThis.__perklink_db__) {
+    return globalThis.__perklink_db__;
+  }
+
+  // 2. Try loading from persistent file
   try {
     const raw = await fs.readFile(DB_PATH, 'utf-8');
-    return JSON.parse(raw) as PerkLinkDatabase;
+    const parsed = JSON.parse(raw) as PerkLinkDatabase;
+    globalThis.__perklink_db__ = parsed;
+    return parsed;
   } catch {
+    // 3. Fallback to fresh seed database
     const seed = createSeedDatabase();
-    await fs.writeFile(DB_PATH, JSON.stringify(seed, null, 2), 'utf-8');
+    globalThis.__perklink_db__ = seed;
+
+    // Try saving seed to disk in background (non-blocking)
+    try {
+      const canWrite = await ensureDataDirs();
+      if (canWrite) {
+        await fs.writeFile(DB_PATH, JSON.stringify(seed, null, 2), 'utf-8');
+      }
+    } catch {
+      // Harmless: in-memory store is active
+    }
+
     return seed;
   }
 }
@@ -38,10 +79,18 @@ export async function mutateDatabase<T>(
   const next = writeLock.then(async () => {
     const db = await readDatabase();
     result = await mutator(db);
-    await ensureDataDirs();
-    const tmpPath = `${DB_PATH}.tmp`;
-    await fs.writeFile(tmpPath, JSON.stringify(db, null, 2), 'utf-8');
-    await fs.rename(tmpPath, DB_PATH);
+    globalThis.__perklink_db__ = db;
+
+    try {
+      const canWrite = await ensureDataDirs();
+      if (canWrite) {
+        const tmpPath = `${DB_PATH}.tmp`;
+        await fs.writeFile(tmpPath, JSON.stringify(db, null, 2), 'utf-8');
+        await fs.rename(tmpPath, DB_PATH);
+      }
+    } catch (err) {
+      console.warn('Persistent disk write skipped (in-memory state preserved):', err);
+    }
   });
   writeLock = next.catch(() => {});
   await next;
@@ -51,8 +100,12 @@ export async function mutateDatabase<T>(
 export async function resetDatabase(): Promise<PerkLinkDatabase> {
   return mutateDatabase((db) => {
     const fresh = createSeedDatabase();
+    for (const key of Object.keys(db) as Array<keyof PerkLinkDatabase>) {
+      delete (db as unknown as Record<string, unknown>)[key as string];
+    }
     Object.assign(db, fresh);
-    return fresh;
+    globalThis.__perklink_db__ = db;
+    return db;
   });
 }
 
@@ -60,11 +113,15 @@ export async function saveUploadedInvoiceFile(
   fileName: string,
   buffer: Buffer
 ): Promise<string> {
-  await ensureDataDirs();
   const safeName = `${Date.now()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  const fullPath = path.join(UPLOADS_DIR, safeName);
-  await fs.writeFile(fullPath, buffer);
-  return `.data/uploads/${safeName}`;
+  try {
+    await ensureDataDirs();
+    const fullPath = path.join(UPLOADS_DIR, safeName);
+    await fs.writeFile(fullPath, buffer);
+    return isServerless ? `/tmp/uploads/${safeName}` : `.data/uploads/${safeName}`;
+  } catch {
+    return `simulated://uploads/${safeName}`;
+  }
 }
 
 export function maskDestination(tx: Transaction): string {
